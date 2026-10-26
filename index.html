@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SFX Workbench</title>
+<meta name="description" content="Browser tool for designing game sound effects: edit, time-stretch, re-pitch, generate, vary, morph, slice and loop. WAV in, WAV out at source quality.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="top">
+  <h1 class="brand">
+    <svg width="26" height="18" viewBox="0 0 26 18" aria-hidden="true"><g fill="currentColor"><rect x="0" y="7" width="2" height="4"/><rect x="4" y="3" width="2" height="12"/><rect x="8" y="0" width="2" height="18"/><rect x="12" y="5" width="2" height="8"/><rect x="16" y="2" width="2" height="14"/><rect x="20" y="6" width="2" height="6"/><rect x="24" y="8" width="2" height="2"/></g></svg>
+    SFX Workbench
+  </h1>
+  <p class="tagline">Cut, stretch, re-pitch, generate, vary and morph game sound effects. WAV in, WAV out at the source's sample rate and bit depth.</p>
+</header>
+
+<main class="bench">
+  <aside class="panel lib" aria-label="Library">
+    <div class="lib-head"><h2>Library</h2><span id="lib-count" class="count"></span></div>
+    <div class="lib-actions">
+      <label class="btn primary file-btn" for="file-in">Import audio</label>
+      <input id="file-in" type="file" accept="audio/*,.wav,.wave" multiple hidden>
+      <select id="gen-sel" aria-label="Add a basic sound">
+        <option value="">Basics…</option>
+        <option value="subdrop">Sub drop</option>
+        <option value="noise">Noise burst</option>
+        <option value="sweep">Sine sweep</option>
+        <option value="click">Click</option>
+      </select>
+    </div>
+    <p class="hint">Drop WAV, MP3 or OGG files anywhere on the page. Examples are synthesized so you can try every tool right away.</p>
+    <ul id="lib-list" class="lib-list"></ul>
+  </aside>
+
+  <section class="work">
+    <div class="panel deck">
+      <div class="deck-head">
+        <input id="snd-name" class="snd-name" type="text" aria-label="Sound name" spellcheck="false" autocomplete="off">
+        <div id="snd-chips" class="chips"></div>
+      </div>
+
+      <div class="lane-label">
+        <span>Source</span>
+        <span class="lane-tools">
+          <span id="sel-info" class="sel-info"></span>
+          <span class="seg" role="group" aria-label="Display">
+            <button type="button" id="view-wave" aria-pressed="true">Wave</button>
+            <button type="button" id="view-spec" aria-pressed="false">Spectrum</button>
+          </span>
+        </span>
+      </div>
+      <canvas id="wave-src" class="wave" aria-label="Source waveform. Drag to select a region, click to set the play position."></canvas>
+
+      <div class="transport">
+        <button class="btn primary" id="btn-play-out" type="button">▶ Play output</button>
+        <button class="btn" id="btn-play-src" type="button">▶ Source</button>
+        <button class="btn" id="btn-stop" type="button">■ Stop</button>
+        <span class="kbd-hint">Space output · Shift+Space source · B compare · Esc stop</span>
+      </div>
+
+      <div class="ops" role="group" aria-label="Edit the source">
+        <button class="btn" type="button" data-op="trim">Trim to selection</button>
+        <button class="btn" type="button" data-op="delete">Delete selection</button>
+        <button class="btn" type="button" data-op="trimsil">Trim silence</button>
+        <span class="sep" aria-hidden="true"></span>
+        <button class="btn" type="button" data-op="reverse">Reverse</button>
+        <button class="btn" type="button" data-op="fadein">Fade in</button>
+        <button class="btn" type="button" data-op="fadeout">Fade out</button>
+        <button class="btn" type="button" data-op="silence">Silence</button>
+        <span class="sep" aria-hidden="true"></span>
+        <button class="btn" type="button" data-op="normalize">Normalize</button>
+        <button class="btn" type="button" data-op="gaindown">−3 dB</button>
+        <button class="btn" type="button" data-op="gainup">+3 dB</button>
+        <button class="btn" type="button" data-op="mono">To mono</button>
+        <span class="sep" aria-hidden="true"></span>
+        <button class="btn" type="button" data-op="undo">Undo</button>
+      </div>
+      <p class="hint">Edits change the source and apply to the selection, or to the whole sound when nothing is selected.</p>
+
+      <div class="lane-label">
+        <span>Output</span>
+        <span class="lane-tools">
+          <span id="out-info" class="sel-info"></span>
+          <label class="chk" title="Shortcut: B. Toggle while the output plays to compare."><input type="checkbox" id="chain-on" checked><span>Effects on</span></label>
+        </span>
+      </div>
+      <canvas id="wave-out" class="wave wave-out" aria-label="Output waveform after effects and finishing"></canvas>
+
+      <div class="finish">
+        <div class="finish-row">
+          <span class="finish-title">Finishing</span>
+          <label>Loudness <select id="fin-lufs">
+            <option value="off">Off</option><option value="-12">−12 LUFS</option><option value="-14">−14 LUFS</option><option value="-16">−16 LUFS</option>
+            <option value="-18">−18 LUFS</option><option value="-20">−20 LUFS</option><option value="-23">−23 LUFS</option></select></label>
+          <label>Channels <select id="fin-ch"><option value="source">Match source</option><option value="mono">Mono (3D sounds)</option><option value="stereo">Stereo</option></select></label>
+          <label class="chk"><input type="checkbox" id="fin-trim"><span>Trim silence</span></label>
+          <label class="chk"><input type="checkbox" id="fin-dc" checked><span>Remove DC</span></label>
+          <label class="chk"><input type="checkbox" id="fin-click" checked><span>De-click edges</span></label>
+          <label class="chk"><input type="checkbox" id="exp-safe" checked><span>Peak ceiling −0.3 dBFS</span></label>
+        </div>
+        <div class="finish-row">
+          <label>Format <select id="exp-fmt"></select></label>
+          <label>Sample rate <select id="exp-sr"></select></label>
+          <div class="export-btns">
+            <button class="btn" id="btn-bake" type="button">Add output to library</button>
+            <button class="btn primary" id="btn-save" type="button">Save output WAV</button>
+          </div>
+        </div>
+        <p class="hint">Finishing is part of the output you hear and applies to everything you save: output, variations, slices and loops.</p>
+      </div>
+    </div>
+
+    <div class="tabs" role="tablist" aria-label="Tools">
+      <button class="tab" role="tab" id="tab-fx" aria-selected="true" aria-controls="pane-fx" type="button">Effects</button>
+      <button class="tab" role="tab" id="tab-var" aria-selected="false" aria-controls="pane-var" type="button">Variations</button>
+      <button class="tab" role="tab" id="tab-mix" aria-selected="false" aria-controls="pane-mix" type="button">Combine &amp; morph</button>
+      <button class="tab" role="tab" id="tab-gen" aria-selected="false" aria-controls="pane-gen" type="button">Generate</button>
+      <button class="tab" role="tab" id="tab-sl" aria-selected="false" aria-controls="pane-sl" type="button">Slice &amp; loop</button>
+    </div>
+
+    <section class="pane" id="pane-fx" role="tabpanel" aria-labelledby="tab-fx">
+      <div class="pane-bar">
+        <label>Preset <select id="preset-sel"></select></label>
+        <label>Add effect <select id="add-fx"></select></label>
+        <button class="btn" id="btn-mutate" type="button" title="Nudge every setting a little at random">Mutate</button>
+        <button class="btn" id="btn-back" type="button" title="Go back to the chain before the last preset, mutate or clear">Back</button>
+        <button class="btn" id="btn-clear" type="button">Clear chain</button>
+      </div>
+      <div class="pane-bar">
+        <input type="text" id="preset-name" placeholder="Name this chain" aria-label="Preset name" maxlength="40">
+        <button class="btn" id="btn-save-preset" type="button">Save as my preset</button>
+        <div id="my-presets" class="mine"></div>
+      </div>
+      <p class="hint">Effects run in order, top to bottom, on the selected sound. Double-click a slider to reset it.</p>
+      <div id="chain" class="chain"></div>
+    </section>
+
+    <section class="pane" id="pane-var" role="tabpanel" aria-labelledby="tab-var" hidden>
+      <div class="var-layout">
+        <div class="panel var-params" id="var-params"></div>
+        <div class="pane" style="gap:10px">
+          <div class="pane-bar">
+            <button class="btn primary" id="btn-gen" type="button">Generate variations</button>
+            <button class="btn" id="btn-reseed" type="button">New seed</button>
+            <button class="btn" id="btn-play-all" type="button">▶ Play all</button>
+            <button class="btn" id="btn-save-all" type="button">Save all (.zip)</button>
+            <button class="btn" id="btn-vars-lib" type="button">Add all to library</button>
+          </div>
+          <ol id="var-list" class="var-list"></ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="pane" id="pane-mix" role="tabpanel" aria-labelledby="tab-mix" hidden>
+      <div id="mode-chips" class="modes" role="radiogroup" aria-label="Combine mode"></div>
+      <p id="mode-desc" class="mode-desc"></p>
+      <div id="mix-body"></div>
+      <div class="pane-bar">
+        <button class="btn primary" id="btn-render-mix" type="button">Render to library</button>
+        <span id="mix-status" class="hint"></span>
+      </div>
+    </section>
+
+    <section class="pane" id="pane-gen" role="tabpanel" aria-labelledby="tab-gen" hidden>
+      <p class="hint">Synthesize raw material from scratch. Pick a type to roll a random sound of that kind, then shape it. Results go to the library, where the effect chain, variations and morphing all apply.</p>
+      <div id="gen-types" class="gen-types" role="group" aria-label="Roll a sound of this type"></div>
+      <div class="gen-preview">
+        <canvas id="wave-gen" class="wave" aria-label="Generated sound preview"></canvas>
+        <div class="pane-bar">
+          <button class="btn" id="gen-play" type="button">▶ Play</button>
+          <button class="btn" id="gen-mutate" type="button">Mutate</button>
+          <button class="btn primary" id="gen-add" type="button">Add to library</button>
+          <label class="chk"><input type="checkbox" id="gen-auto" checked><span>Play on change</span></label>
+          <span id="gen-info" class="hint"></span>
+        </div>
+      </div>
+      <div id="gen-grid" class="gen-grid"></div>
+    </section>
+
+    <section class="pane" id="pane-sl" role="tabpanel" aria-labelledby="tab-sl" hidden>
+      <p class="hint">Both tools use the selected source sound without the effect chain. Add the output to the library first if you want effects included.</p>
+      <div class="sl-layout">
+        <div class="panel sl-panel">
+          <h2>Split takes</h2>
+          <p class="hint">Record many takes in one file (footsteps, clicks, impacts) and split them into separate sounds at the silences.</p>
+          <div id="slice-params" class="fx-params"></div>
+          <div class="pane-bar">
+            <button class="btn primary" id="sl-detect" type="button">Find takes</button>
+            <button class="btn" id="sl-lib" type="button">Add to library</button>
+            <button class="btn" id="sl-save" type="button">Save all (.zip)</button>
+          </div>
+          <span id="sl-info" class="hint"></span>
+          <ul id="sl-list" class="sl-list"></ul>
+        </div>
+        <div class="panel sl-panel">
+          <h2>Seamless loop</h2>
+          <p class="hint">Select the steady part of a hum, engine or ambience on the waveform. The loop is crossfaded with the audio just before it so it keeps its length. Start / loop / stop gives you the three files a looping device needs.</p>
+          <div id="loop-params" class="fx-params"></div>
+          <div class="pane-bar">
+            <button class="btn primary" id="lp-play" type="button">▶ Preview loop</button>
+            <button class="btn" id="lp-lib" type="button">Add loop to library</button>
+            <button class="btn" id="lp-save" type="button">Save loop WAV</button>
+            <button class="btn" id="lp-set" type="button">Save start / loop / stop (.zip)</button>
+          </div>
+          <span id="lp-info" class="hint"></span>
+        </div>
+      </div>
+    </section>
+  </section>
+</main>
+
+<footer class="foot"><p id="env-note">Everything runs in this browser tab. No audio is uploaded anywhere.</p></footer>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
