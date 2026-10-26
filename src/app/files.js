@@ -52,16 +52,23 @@ export async function saveZip(name, items) {
   try { await saveBytes(safeName(name) + '.zip', D.zip(items.map(it => ({ name: safeName(it.name) + '.wav', data: encodeFor(it, it.meta || it) }))), 'application/zip'); }
   catch (e) { console.error(e); toast('Could not build the zip: ' + e.message, 'err'); }
 }
+/**
+ * Decode a File or Blob: our own WAV/AIFF parser first (keeps bit depth, no resampling), then the browser's decoder
+ * for compressed formats (MP3, OGG, FLAC, M4A...). Compressed sources are marked `decoded` and save as 24-bit by default.
+ */
+export async function decodeFile(f) {
+  const buf = await f.arrayBuffer();
+  const dec = D.decodeAudioFile(buf);
+  if (dec) return dec;
+  const ab = await ctx().decodeAudioData(buf.slice(0));
+  return { sr: ab.sampleRate, ch: Array.from({ length: ab.numberOfChannels }, (_, i) => ab.getChannelData(i).slice()), bits: 24, isFloat: false, decoded: true };
+}
+
 export async function importFiles(files) {
   let last = null;
   for (const f of files) {
     try {
-      const buf = await f.arrayBuffer();
-      let dec = D.decodeWav(buf);
-      if (!dec) {
-        const ab = await ctx().decodeAudioData(buf.slice(0));
-        dec = { sr: ab.sampleRate, ch: Array.from({ length: ab.numberOfChannels }, (_, i) => ab.getChannelData(i).slice()), bits: 24, isFloat: false, decoded: true };
-      }
+      const dec = await decodeFile(f);
       if (!D.len(dec.ch)) throw new Error('No audio in this file.');
       last = newSound(f.name.replace(/\.[^.]+$/, ''), dec.sr, dec.ch, dec.bits, dec.isFloat, 'file');
       S.sounds.push(last);

@@ -13,7 +13,8 @@ export const sgn = v => (v > 0 ? '+' : v < 0 ? '−' : '');
 
 /**
  * Display a parameter value. The spec's `u` (unit) picks the format:
- * Hz, ms, st, dB, cut, LUFS, %, ±%, s, ×, ratio, #, bit, off% and offms (0 shows "off"), or '' for a plain number.
+ * Hz, ms, st, dB, cut, LUFS, %, ±%, s, ×, ratio, #, bit, /s (events per second), oct, mm, ct (cents),
+ * off% and offms (0 shows "off"), or '' for a plain number.
  */
 export function fmtVal(sp, v) {
   const u = sp.u || '';
@@ -30,6 +31,10 @@ export function fmtVal(sp, v) {
   if (u === 'ratio') return '×' + (+v).toFixed(2);
   if (u === '#') return '#' + Math.round(v);
   if (u === 'bit') return Math.round(v) + '-bit';
+  if (u === '/s') return (v < 10 ? (+v).toFixed(1) : Math.round(v)) + ' /s';
+  if (u === 'oct') return (+v).toFixed(1) + ' oct';
+  if (u === 'mm') return (v < 10 ? (+v).toFixed(1) : Math.round(v)) + ' mm';
+  if (u === 'ct') return '±' + Math.round(v) + ' ct';
   if (u === 'off%') return v > 0 ? Math.round(v) + '%' : 'off';
   if (u === 'offms') return v > 0 ? Math.round(v) + ' ms' : 'off';
   return String(+(+v).toFixed(2));

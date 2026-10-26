@@ -3,13 +3,15 @@
  * Effect processors used by the effect chain. Each entry is (channels, sampleRate, params) -> channels.
  * The UI definition (labels, ranges, defaults) of each effect lives in src/config/effects.js under the same key.
  */
-import { TAU, len, peak, scale, copy, matchPeak, trimTail, monoAbs, follower, dcBlock, dbToLin, linToDb } from './core.js';
+import { TAU, rng, len, peak, scale, copy, matchPeak, trimTail, monoAbs, follower, dcBlock, dbToLin, linToDb } from './core.js';
 import { varispeed } from './resample.js';
 import { biquad, biquadG, runBiquad } from './filters.js';
 import { stft, istft } from './fft.js';
 import { timeStretch, pitchShift } from './stretch.js';
 import { loudnessNormalize } from './loudness.js';
 import { extract } from './edit.js';
+import { buildBody, resonateMono, disperseMono, maxTau } from './physical.js';
+
 
 /* ---------- effects: (chs, sr, params) -> chs ---------- */
 export const FX = {
@@ -226,4 +228,18 @@ Object.assign(FX, {
   },
   loud: (ch, sr, p) => loudnessNormalize(ch, sr, p.target, p.ceil),
   dc: (ch, sr) => ch.map(c => dcBlock(c, sr)),
+  /** All-pass dispersion, optionally in a feedback loop: clicks become chirps, the loop adds spring-reverb repeats. */
+  disperse(ch, sr, p) {
+    const mix = p.mix / 100, pk = peak(ch);
+    const wet = ch.map(c => disperseMono(c, sr, p.amount / 100, p.stages, p.fb / 100, p.delay));
+    const wpk = peak(wet), g = wpk > 0 ? pk / wpk : 0, L = len(wet);
+    return trimTail(wet.map((w, k) => { const o = new Float32Array(L), c = ch[k]; for (let i = 0; i < L; i++) o[i] = w[i] * g * mix + (i < c.length ? c[i] : 0) * (1 - mix); return o; }), len(ch));
+  },
+  /** Excite a modal body (material, shape, size) with the sound, as if it were struck through that object. */
+  resonate(ch, sr, p) {
+    const R = rng(1234), modes = buildBody({ material: p.material, shape: p.shape, size: p.size, modes: p.modes, ring: p.ring, pos: p.pos / 100, irregular: 0.2 }, sr, R);
+    const tail = Math.round(Math.min(6, 6 * maxTau(modes)) * sr), mix = p.mix / 100, pk = peak(ch);
+    const wet = ch.map(c => resonateMono(c, modes, sr, tail)), wpk = peak(wet), g = wpk > 0 ? pk / wpk : 0, L = len(wet);
+    return trimTail(wet.map((w, k) => { const o = new Float32Array(L), c = ch[k]; for (let i = 0; i < L; i++) o[i] = w[i] * g * mix + (i < c.length ? c[i] : 0) * (1 - mix); return o; }), len(ch));
+  },
 });

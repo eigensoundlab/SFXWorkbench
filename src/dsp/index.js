@@ -14,6 +14,8 @@ export * from './loudness.js';
 export * from './edit.js';
 export * from './analysis.js';
 export * from './generator.js';
+export * from './physical.js';
+export * from './textures.js';
 export { synth } from './examples.js';
 export * from '../io/wav.js';
 export * from '../io/zip.js';

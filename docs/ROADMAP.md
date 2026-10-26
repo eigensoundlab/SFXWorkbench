@@ -8,6 +8,7 @@ Ideas ranked roughly by value for game sound work. Open an issue before starting
   installed as an app.
 - **Web Worker processing:** move `processChain`, morphing and variations off the main thread; show progress for long
   files.
+- **Save into working folders:** write outputs and variations straight into a pinned folder (File System Access, read-write).
 - **Batch processing:** apply the current chain and finishing to many files at once and save them as one zip.
 - **Preset import/export:** share chains as JSON files.
 - **WAV metadata:** keep and write `smpl` loop points and `cue` markers, so loops built here loop in engines and samplers
@@ -21,11 +22,17 @@ Ideas ranked roughly by value for game sound work. Open an issue before starting
 - Spectral freeze and spectral blur effects.
 - Per-variation random chain parameters (randomize selected effect params within ranges, not just pitch and tone).
 - Doppler / pass-by tool with distance-based level and air absorption.
-- More generator sources: wavetable, Karplus-Strong plucks, simple modal impacts.
+- More physical models: Karplus-Strong strings and plucks, friction (bowed / squeaking) with a stick-slip oscillator,
+  hollow tube resonance (Helmholtz) for whooshes and bottles, contact between two bodies (both resonate).
+- Measured material data (modal analysis of real recordings) to replace hand-tuned loss factors.
+- Event designer: chain a cause and several effects on a timeline (for example trigger, shot, shell drop, tail), with
+  variations of the whole chain.
+- Texture looping: render textures as seamless loops directly.
 
 ## Workflow
 
 - Undo history for chain and finishing changes, not only source edits.
+- Recorder: input gain trim and monitoring, take list with keep/discard, punch-in on a selection.
 - Multiple selections and markers; export markers as slices.
 - True-peak meter and per-category loudness profiles (UI, weapons, foley).
 - Naming templates for engines and middleware (Unity, Unreal, Godot, FMOD, Wwise).

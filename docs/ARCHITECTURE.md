@@ -59,6 +59,22 @@ All state lives in `S` (`src/app/state.js`). Modules mutate it and call the spec
 Modules import each other's render functions; the cycles are safe because nothing is called while modules are being
 evaluated, only after `boot()`.
 
+## Inputs: recorder and folders
+
+- `src/app/recorder.js` opens the microphone with browser voice processing off (unless the user turns "Raw input"
+  off), creates a dedicated AudioContext at the track's sample rate and captures float samples with an AudioWorklet
+  (code loaded from a Blob URL so it works in the single-file build). States: off, idle (meter only), armed (waiting for
+  the threshold, keeping a 150 ms pre-roll), recording. Finished takes become library sounds named `rec_NN`.
+- `src/app/folders.js` lists folders through a small node interface (`{ name, list() }`) with two implementations: File
+  System Access handles (persisted in IndexedDB by `src/app/store.js`) and a tree built from an
+  `<input webkitdirectory>` upload. Previews are decoded by `decodeFile()` in `src/app/files.js` and cached (24 files).
+
+## Generator engines
+
+`ENGINES` in `src/config/generator.js` lists the Generate tab engines. Each names its DSP render function, its parameter
+groups and its dice types. `src/app/panels/generate.js` is generic: it builds the engine switch, dice buttons and
+parameter panels from that table and keeps separate parameters per engine in `S.gParams`.
+
 ## Saving
 
 `saveBytes()` in `src/app/files.js` downloads via a temporary link. When the page runs inside a Claude artifact

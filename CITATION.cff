@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it using these metadata."
 title: "SFX Workbench"
-abstract: "Browser-based tool for designing game sound effects: editing, time-stretching, pitch shifting, procedural generation, variations, morphing, take slicing, seamless loops and loudness finishing, with WAV output at source quality."
+abstract: "Browser-based tool for designing game sound effects: recording, editing, time-stretching, pitch shifting, physically based and procedural generation, variations, morphing, take slicing, seamless loops and loudness finishing, with WAV output at source quality."
 type: software
 authors:
   - family-names: Sandner
@@ -10,7 +10,7 @@ authors:
 repository-code: "https://github.com/eigensoundlab/SFXWorkbench"
 url: "https://eigensoundlab.github.io/SFXWorkbench/"
 license: Apache-2.0
-version: 0.2.0
+version: 0.3.0
 date-released: 2026-10-26
 keywords:
   - sound design
@@ -18,3 +18,5 @@ keywords:
   - foley
   - digital signal processing
   - web audio
+  - physical modelling
+  - procedural audio

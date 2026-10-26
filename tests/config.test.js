@@ -7,7 +7,7 @@ import { D, SR, finite, examples } from './helpers.js';
 import { FXDEF } from '../src/config/effects.js';
 import { PRESETS } from '../src/config/presets.js';
 import { MIX, VAR_SPEC, LAYER_SPEC, SLICE_SPEC, LOOP_SPEC } from '../src/config/tools.js';
-import { GEN_SPECS, GEN_TYPES } from '../src/config/generator.js';
+import { ENGINES, engineSpecs } from '../src/config/generator.js';
 import { defaults } from '../src/app/format.js';
 
 const ex = examples();
@@ -22,6 +22,11 @@ function checkSpecs(name, specs) {
       if (sp.log) assert.ok(sp.min > 0, `${name}.${sp.k}: log slider needs min > 0`);
     }
     for (const dep of [sp.when, sp.whenNot].filter(Boolean)) assert.ok(specs.some(o => o.k === dep && o.type === 'bool'), `${name}.${sp.k}: when/whenNot must name a bool param`);
+    if (sp.show) {
+      const ctl = specs.find(o => o.k === sp.show.k && o.type === 'select');
+      assert.ok(ctl, `${name}.${sp.k}: show must name a select param`);
+      for (const v of sp.show.in) assert.ok(ctl.opts.some(([o]) => o === v), `${name}.${sp.k}: show value "${v}" is not an option of ${sp.show.k}`);
+    }
   }
 }
 
@@ -56,12 +61,19 @@ test('morph modes with params have processors; tool specs are valid', () => {
   for (const [n, s] of Object.entries({ VAR_SPEC, LAYER_SPEC, SLICE_SPEC, LOOP_SPEC })) checkSpecs(n, s);
 });
 
-test('generator types only set known params and render', () => {
-  checkSpecs('generator', GEN_SPECS);
-  for (const [name, roll] of Object.entries(GEN_TYPES)) {
-    const p = roll();
-    for (const key of Object.keys(p)) assert.ok(GEN_SPECS.some(sp => sp.k === key), `${name}: unknown param ${key}`);
-    const out = D.synthGen({ ...defaults(GEN_SPECS), ...p }, SR);
-    assert.ok(finite(out) && D.len(out) > 0, name);
+test('every generator engine renders its defaults and every dice type', () => {
+  for (const [ek, eng] of Object.entries(ENGINES)) {
+    assert.equal(typeof D[eng.render], 'function', `${ek}: missing D.${eng.render}`);
+    const specs = engineSpecs(ek);
+    checkSpecs(ek, specs);
+    assert.equal(new Set(specs.map(sp => sp.k)).size, specs.length, `${ek}: duplicate param keys`);
+    const def = D[eng.render](defaults(specs), SR);
+    assert.ok(finite(def) && D.len(def) > 0, `${ek} defaults`);
+    for (const [name, roll] of Object.entries(eng.types)) {
+      const p = roll();
+      for (const key of Object.keys(p)) assert.ok(specs.some(sp => sp.k === key), `${ek}/${name}: unknown param ${key}`);
+      const out = D[eng.render]({ ...defaults(specs), ...p }, SR);
+      assert.ok(finite(out) && D.len(out) > 0 && D.peak(out) > 0.5, `${ek}/${name}`);
+    }
   }
 });

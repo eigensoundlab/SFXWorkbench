@@ -6,7 +6,8 @@ import { fmtVal, toSlider, fromSlider, roundLog } from './format.js';
 
 export function paramRow(sp, obj, onChange, idp) {
   const id = `${idp}-${sp.k}`;
-  const row = h('div', { class: 'prm', 'data-when': sp.when || null, 'data-when-not': sp.whenNot || null });
+  const row = h('div', { class: 'prm', 'data-when': sp.when || null, 'data-when-not': sp.whenNot || null,
+    'data-show-key': sp.show ? sp.show.k : null, 'data-show-in': sp.show ? sp.show.in.join(' ') : null });
   if (sp.type === 'select') {
     row.classList.add('prm-sel');
     const sel = h('select', { id, onchange: e => { obj[sp.k] = e.target.value; onChange(); } }, sp.opts.map(([v, t]) => h('option', { value: v, text: t })));
@@ -25,7 +26,9 @@ export function paramRow(sp, obj, onChange, idp) {
   }
   return row;
 }
+/** Dim rows whose `when`/`whenNot` bool is off, and hide rows whose `show` condition does not match. */
 export function syncWhen(root, obj) {
+  root.querySelectorAll('[data-show-key]').forEach(r => { r.hidden = !r.dataset.showIn.split(' ').includes(String(obj[r.dataset.showKey])); });
   root.querySelectorAll('[data-when],[data-when-not]').forEach(r => {
     const on = r.dataset.when ? !!obj[r.dataset.when] : !obj[r.dataset.whenNot];
     r.classList.toggle('is-dim', !on);

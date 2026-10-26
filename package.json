@@ -1,6 +1,6 @@
 {
   "name": "sfx-workbench",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Browser tool for designing game sound effects: edit, time-stretch, re-pitch, generate, vary, morph, slice and loop. WAV in, WAV out at source quality.",
   "type": "module",
   "private": true,
@@ -9,7 +9,7 @@
   "homepage": "https://eigensoundlab.github.io/SFXWorkbench/",
   "repository": { "type": "git", "url": "git+https://github.com/eigensoundlab/SFXWorkbench.git" },
   "bugs": { "url": "https://github.com/eigensoundlab/SFXWorkbench/issues" },
-  "keywords": ["sound design", "sfx", "game audio", "foley", "web audio", "dsp", "time-stretch", "wav"],
+  "keywords": ["sound design", "sfx", "game audio", "foley", "web audio", "dsp", "time-stretch", "wav", "physical modelling", "procedural audio"],
   "engines": { "node": ">=22" },
   "scripts": {
     "start": "node scripts/serve.mjs",

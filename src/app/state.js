@@ -6,7 +6,7 @@
 import { defaults } from './format.js';
 import { FXDEF } from '../config/effects.js';
 import { VAR_SPEC, MIX, SLICE_SPEC, LOOP_SPEC } from '../config/tools.js';
-import { GEN_SPECS } from '../config/generator.js';
+import { ENGINES, engineSpecs } from '../config/generator.js';
 
 let uid = 1, fxid = 1;
 export const S = {
@@ -14,7 +14,7 @@ export const S = {
   vp: defaults(VAR_SPEC), vname: '{name}_var{nn}', vars: [],
   mode: 'cross', A: null, B: null, mp: Object.fromEntries(Object.entries(MIX).filter(([, m]) => m.params).map(([k, m]) => [k, defaults(m.params)])),
   layers: [], layerNorm: true,
-  gp: defaults(GEN_SPECS), gType: null, gOut: null, gVer: 0, gCount: {},
+  gEngine: 'synth', gParams: Object.fromEntries(Object.keys(ENGINES).map(e => [e, defaults(engineSpecs(e))])), gTypes: {}, gOut: null, gVer: 0, gCount: {},
   sp: defaults(SLICE_SPEC), slices: null, lp: defaults(LOOP_SPEC),
   exp: { fmt: 'source', sr: 'source' },
   fin: { lufs: 'off', ch: 'source', trim: false, dc: true, declick: true, ceil: true },

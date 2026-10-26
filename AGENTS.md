@@ -5,9 +5,9 @@ Read it before changing anything. Deeper detail lives in [docs/ARCHITECTURE.md](
 
 ## What this is
 
-SFX Workbench is a static, client-side web app for designing game sound effects: edit, time-stretch, re-pitch, generate,
-vary, morph, slice and loop. It runs entirely in the browser. There is no backend, no account, no network use at runtime
-(apart from Google Fonts, which are optional). It is deployed to GitHub Pages and also shipped as one offline HTML file.
+SFX Workbench is a static, client-side web app for designing game sound effects: record, edit, time-stretch, re-pitch,
+generate (synth, physical impacts, textures), vary, morph, slice and loop. It runs entirely in the browser. There is no
+backend, no account, no network use at runtime (apart from Google Fonts, which are optional). It is deployed to GitHub Pages and also shipped as one offline HTML file.
 
 ## Commands
 
@@ -31,7 +31,7 @@ src/main.js           entry: boot, tabs, keyboard shortcuts, theme redraw
 src/dsp/              pure DSP, no DOM; `index.js` is the public API (imported as `D`)
 src/io/               WAV and ZIP encoding/decoding, also pure
 src/config/           data that drives the UI: effects, presets, tool and generator specs
-src/app/              UI modules: state, deck, library, output, files, drawing, audio
+src/app/              UI modules: state, deck, library, output, files, drawing, audio, recorder, folders, store
 src/app/panels/       one module per tab: effects, variations, combine, generate, slice
 tests/                node:test suites, including config consistency checks
 scripts/              build (esbuild) and dev server
@@ -71,8 +71,19 @@ Add `'Name': [[effectType, params], ...]` to a category in `src/config/presets.j
 for that effect; the config test renders every preset on a footstep and fails on unknown keys or NaN.
 
 **Add a generator sound type**
-Add a function to `GEN_TYPES` in `src/config/generator.js` that returns partial params (random within sensible ranges).
-New synthesis features go in `src/dsp/generator.js` plus a new spec in `GEN_GROUPS`.
+Add a function to the `types` of an engine in `src/config/generator.js` (`GEN_TYPES`, `IMPACT_TYPES`,
+`TEXTURE_TYPES`) that returns partial params, randomised within sensible ranges. Use only keys of that engine's specs.
+
+**Add a generator parameter or engine**
+Parameters: add the spec to the engine's groups and read it in the render function (`synthGen` in
+`src/dsp/generator.js`, `impactGen` in `src/dsp/physical.js`, `textureGen` in `src/dsp/textures.js`). Use
+`show: { k: 'kind', in: [...] }` for rows that only apply to some kinds or causes.
+Engine: write a pure `(params, sampleRate) => Channels` function, export it from `src/dsp/index.js`, and add an entry to
+`ENGINES` with `render` set to its exported name. The config test renders every engine and dice type.
+
+**Add a material or shape (Impact engine)**
+Add it to `MATERIALS` or `SHAPES` in `src/dsp/physical.js`. Menus are built from those tables automatically.
+Materials need `eta` (loss factor), `delta` (constant loss, 1/s), `noiseHz` and `grit` (0..1, contact noise share).
 
 **Add a morph mode**
 Add the processor to `MORPH` in `src/dsp/morph.js` (`(A, B, sr, params) => channels`; A and B already share rate and
@@ -94,4 +105,8 @@ settings; call `scheduleRender()` after any change that affects it. Every edit t
 - `window.claude` checks in `src/app/files.js`: the page can also run as a Claude artifact, where downloads go through a
   platform capability and must be zipped. On GitHub Pages and offline this path is never taken.
 - Waveform canvases cache an offscreen image in `canvas._c`; the cache key includes theme colors so theme changes redraw.
+- The recorder (`src/app/recorder.js`) creates its own AudioContext at the input's sample rate; playback uses another
+  one. Keep them separate so recordings are never resampled.
+- `src/app/folders.js` wraps real directory handles and uploaded file trees behind one small node interface (`list()`).
+  Directory handles are stored in IndexedDB via `src/app/store.js`, never in localStorage.
 - The STFT uses 75% overlap with Hann analysis and synthesis windows and normalises by the summed window power.

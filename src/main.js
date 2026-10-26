@@ -18,6 +18,8 @@ import { renderVarParams, renderVars, initVariations } from './app/panels/variat
 import { renderMix, initCombine } from './app/panels/combine.js';
 import { rollGenQuiet, initGenerate } from './app/panels/generate.js';
 import { updateSliceInfo, initSlice } from './app/panels/slice.js';
+import { initRecorder, recorderBusy, toggleRecord } from './app/recorder.js';
+import { initFolders } from './app/folders.js';
 
 const TABS = ['fx', 'var', 'mix', 'gen', 'sl'];
 
@@ -38,6 +40,7 @@ function initShortcuts() {
     if (typing || e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.code === 'Space' && !(t.matches && t.matches('button, input[type="checkbox"]'))) {
       e.preventDefault();
+      if (recorderBusy()) { toggleRecord(); return; }
       if (playing()) { stop(); return; }
       if (e.shiftKey) playSource(); else playOutput(0);
     } else if (e.key === 'Escape') {
@@ -57,6 +60,17 @@ function initRedraw() {
   try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw); } catch (e) { /* older browsers */ }
   new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(redraw);
+}
+
+function initRail() {
+  const show = which => {
+    $('#rail-lib').setAttribute('aria-pressed', which === 'lib' ? 'true' : 'false');
+    $('#rail-dir').setAttribute('aria-pressed', which === 'dir' ? 'true' : 'false');
+    $('#rail-lib-view').hidden = which !== 'lib';
+    $('#rail-dir-view').hidden = which !== 'dir';
+  };
+  $('#rail-lib').onclick = () => show('lib');
+  $('#rail-dir').onclick = () => show('dir');
 }
 
 function loadExamples() {
@@ -80,7 +94,7 @@ function loadExamples() {
 
 function boot() {
   loadExamples();
-  initDeck(); initLibrary(); initEffects(); initVariations(); initCombine(); initGenerate(); initSlice();
+  initDeck(); initLibrary(); initRail(); initRecorder(); initFolders(); initEffects(); initVariations(); initCombine(); initGenerate(); initSlice();
   initShortcuts(); initRedraw();
   for (const t of TABS) $('#tab-' + t).onclick = () => setTab(t);
   $('#env-note').textContent = inViewer()

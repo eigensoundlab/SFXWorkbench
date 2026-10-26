@@ -72,3 +72,54 @@ export function encodeWav(ch, sr, bits, isFloat) {
   }
   return new Uint8Array(buf);
 }
+
+/** IEEE 754 80-bit extended float (AIFF sample rate), big-endian. */
+function readExtended(dv, o) {
+  const se = dv.getUint16(o), hi = dv.getUint32(o + 2), lo = dv.getUint32(o + 6);
+  const sign = se & 0x8000 ? -1 : 1, exp = se & 0x7fff;
+  if (!exp && !hi && !lo) return 0;
+  return sign * (hi * 2 ** (exp - 16383 - 31) + lo * 2 ** (exp - 16383 - 63));
+}
+
+/**
+ * Decode AIFF / AIFF-C (uncompressed PCM, 'sowt' little-endian PCM, 32/64-bit float).
+ * Returns null if the data is not AIFF, like decodeWav.
+ */
+export function decodeAiff(buf) {
+  const dv = new DataView(buf);
+  const tag = o => String.fromCharCode(dv.getUint8(o), dv.getUint8(o + 1), dv.getUint8(o + 2), dv.getUint8(o + 3));
+  if (dv.byteLength < 12 || tag(0) !== 'FORM' || !['AIFF', 'AIFC'].includes(tag(8))) return null;
+  let p = 12, comm = null, ssnd = null;
+  while (p + 8 <= dv.byteLength) {
+    const id = tag(p), size = dv.getUint32(p + 4), body = p + 8;
+    if (id === 'COMM') {
+      comm = { nc: dv.getUint16(body), frames: dv.getUint32(body + 2), bits: dv.getUint16(body + 6), sr: Math.round(readExtended(dv, body + 8)), comp: size >= 22 ? tag(body + 18) : 'NONE' };
+    } else if (id === 'SSND') {
+      ssnd = { off: body + 8 + dv.getUint32(body), end: Math.min(dv.byteLength, body + size) };
+    }
+    p = body + size + (size & 1);
+  }
+  if (!comm || !ssnd) throw new Error('This AIFF file has no readable audio data.');
+  const comp = comm.comp.toLowerCase(), isFloat = comp === 'fl32' || comp === 'fl64', little = comp === 'sowt';
+  if (!['none', 'sowt', 'fl32', 'fl64', 'twos'].includes(comp)) throw new Error(`Unsupported AIFF-C compression "${comm.comp}". Save it as uncompressed AIFF or WAV.`);
+  const bps = isFloat ? (comp === 'fl64' ? 8 : 4) : Math.ceil(comm.bits / 8), nc = comm.nc;
+  const frames = Math.min(comm.frames, Math.floor((ssnd.end - ssnd.off) / (bps * nc)));
+  const ch = Array.from({ length: nc }, () => new Float32Array(frames));
+  let o = ssnd.off;
+  for (let i = 0; i < frames; i++) for (let c = 0; c < nc; c++) {
+    let v;
+    if (isFloat) v = bps === 8 ? dv.getFloat64(o, little) : dv.getFloat32(o, little);
+    else if (bps === 1) v = dv.getInt8(o) / 128;
+    else if (bps === 2) v = dv.getInt16(o, little) / 32768;
+    else if (bps === 3) {
+      let x = little ? dv.getUint8(o) | (dv.getUint8(o + 1) << 8) | (dv.getUint8(o + 2) << 16) : (dv.getUint8(o) << 16) | (dv.getUint8(o + 1) << 8) | dv.getUint8(o + 2);
+      if (x & 0x800000) x |= ~0xFFFFFF;
+      v = x / 8388608;
+    } else v = dv.getInt32(o, little) / 2147483648;
+    ch[c][i] = v; o += bps;
+  }
+  return { sr: comm.sr, ch, bits: isFloat ? 32 : bps * 8, isFloat };
+}
+
+/** Decode WAV or AIFF; null if neither (callers then fall back to the browser's decoder). */
+export const decodeAudioFile = buf => decodeWav(buf) || decodeAiff(buf);

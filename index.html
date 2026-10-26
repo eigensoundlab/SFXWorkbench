@@ -17,25 +17,64 @@
     <svg width="26" height="18" viewBox="0 0 26 18" aria-hidden="true"><g fill="currentColor"><rect x="0" y="7" width="2" height="4"/><rect x="4" y="3" width="2" height="12"/><rect x="8" y="0" width="2" height="18"/><rect x="12" y="5" width="2" height="8"/><rect x="16" y="2" width="2" height="14"/><rect x="20" y="6" width="2" height="6"/><rect x="24" y="8" width="2" height="2"/></g></svg>
     SFX Workbench
   </h1>
-  <p class="tagline">Cut, stretch, re-pitch, generate, vary and morph game sound effects. WAV in, WAV out at the source's sample rate and bit depth.</p>
+  <p class="tagline">Record, cut, stretch, re-pitch, generate, vary and morph game sound effects. WAV in, WAV out at the source's sample rate and bit depth.</p>
 </header>
 
 <main class="bench">
-  <aside class="panel lib" aria-label="Library">
-    <div class="lib-head"><h2>Library</h2><span id="lib-count" class="count"></span></div>
-    <div class="lib-actions">
-      <label class="btn primary file-btn" for="file-in">Import audio</label>
-      <input id="file-in" type="file" accept="audio/*,.wav,.wave" multiple hidden>
-      <select id="gen-sel" aria-label="Add a basic sound">
-        <option value="">Basics…</option>
-        <option value="subdrop">Sub drop</option>
-        <option value="noise">Noise burst</option>
-        <option value="sweep">Sine sweep</option>
-        <option value="click">Click</option>
-      </select>
+  <aside class="panel lib" aria-label="Sounds">
+    <div class="lib-head">
+      <span class="seg seg-lg" role="group" aria-label="Show">
+        <button type="button" id="rail-lib" aria-pressed="true">Library</button>
+        <button type="button" id="rail-dir" aria-pressed="false">Folders</button>
+      </span>
+      <span id="lib-count" class="count"></span>
     </div>
-    <p class="hint">Drop WAV, MP3 or OGG files anywhere on the page. Examples are synthesized so you can try every tool right away.</p>
-    <ul id="lib-list" class="lib-list"></ul>
+
+    <div id="rail-lib-view" class="rail-view">
+      <div class="lib-actions">
+        <label class="btn primary file-btn" for="file-in">Import</label>
+        <input id="file-in" type="file" accept="audio/*,.wav,.wave,.aif,.aiff,.aifc,.flac" multiple hidden>
+        <button class="btn" id="rec-open" type="button">● Record</button>
+        <select id="gen-sel" aria-label="Add a basic sound">
+          <option value="">Basics…</option>
+          <option value="subdrop">Sub drop</option>
+          <option value="noise">Noise burst</option>
+          <option value="sweep">Sine sweep</option>
+          <option value="click">Click</option>
+        </select>
+      </div>
+
+      <div id="rec-panel" class="rec" hidden>
+        <div class="rec-head"><h2>Record</h2><button class="icon-btn" id="rec-close" type="button" aria-label="Close the recorder" title="Close and release the input">×</button></div>
+        <div class="rec-field"><label for="rec-dev">Input</label><select id="rec-dev"><option value="">Default input</option></select></div>
+        <div class="rec-field"><label for="rec-ch">Channels</label><select id="rec-ch"><option value="1">Mono</option><option value="2">Stereo</option></select></div>
+        <label class="chk"><input type="checkbox" id="rec-raw" checked><span>Raw input (no noise suppression or auto gain)</span></label>
+        <label class="chk"><input type="checkbox" id="rec-trig"><span>Start when sound arrives</span></label>
+        <div class="rec-field" id="rec-thr-row"><label for="rec-thr">Threshold</label><input type="range" id="rec-thr" min="-60" max="-6" step="1" value="-36"><output id="rec-thr-val" class="val" for="rec-thr"></output></div>
+        <label class="chk" id="rec-auto-row"><input type="checkbox" id="rec-auto" checked><span>Stop after 1.5 s of silence, then wait for the next take</span></label>
+        <div class="meter" aria-hidden="true"><div class="meter-fill" id="rec-meter"></div><div class="meter-thr" id="rec-thr-mark"></div></div>
+        <div class="rec-status"><span id="rec-time">Ready</span><span id="rec-info"></span></div>
+        <button class="btn rec-btn" id="rec-go" type="button">● Record</button>
+        <p id="rec-msg" class="hint" role="status"></p>
+      </div>
+
+      <p class="hint">Drop WAV, AIFF, FLAC, MP3 or OGG files anywhere on the page. Examples are synthesized so you can try every tool right away.</p>
+      <ul id="lib-list" class="lib-list"></ul>
+    </div>
+
+    <div id="rail-dir-view" class="rail-view" hidden>
+      <div class="lib-actions dir-actions">
+        <button class="btn primary" id="dir-add" type="button">Add folder</button>
+        <input id="dir-in" type="file" webkitdirectory multiple hidden>
+        <label class="chk"><input type="checkbox" id="dir-auto" checked><span>Play on select</span></label>
+      </div>
+      <p id="dir-note" class="hint"></p>
+      <ul id="dir-pins" class="pins" aria-label="Folders"></ul>
+      <nav id="dir-crumbs" class="crumbs" aria-label="Current folder"></nav>
+      <input type="text" id="dir-filter" placeholder="Filter by name" aria-label="Filter sounds by name" spellcheck="false" autocomplete="off">
+      <ul id="dir-list" class="dir-list" role="listbox" tabindex="0" aria-label="Sounds in this folder"></ul>
+      <p id="dir-info" class="hint" role="status"></p>
+    </div>
   </aside>
 
   <section class="work">
@@ -168,7 +207,10 @@
     </section>
 
     <section class="pane" id="pane-gen" role="tabpanel" aria-labelledby="tab-gen" hidden>
-      <p class="hint">Synthesize raw material from scratch. Pick a type to roll a random sound of that kind, then shape it. Results go to the library, where the effect chain, variations and morphing all apply.</p>
+      <div class="pane-bar">
+        <span class="seg seg-lg" id="gen-engines" role="group" aria-label="Generator engine"></span>
+      </div>
+      <p id="gen-desc" class="mode-desc"></p>
       <div id="gen-types" class="gen-types" role="group" aria-label="Roll a sound of this type"></div>
       <div class="gen-preview">
         <canvas id="wave-gen" class="wave" aria-label="Generated sound preview"></canvas>
@@ -176,6 +218,7 @@
           <button class="btn" id="gen-play" type="button">▶ Play</button>
           <button class="btn" id="gen-mutate" type="button">Mutate</button>
           <button class="btn primary" id="gen-add" type="button">Add to library</button>
+          <button class="btn" id="gen-layer" type="button" title="Add to the library and put it in the next free layer of the layer stack">Add as layer</button>
           <label class="chk"><input type="checkbox" id="gen-auto" checked><span>Play on change</span></label>
           <span id="gen-info" class="hint"></span>
         </div>
@@ -215,7 +258,10 @@
   </section>
 </main>
 
-<footer class="foot"><p id="env-note">Everything runs in this browser tab. No audio is uploaded anywhere.</p></footer>
+<footer class="foot">
+  <p id="env-note">Everything runs in this browser tab. No audio is uploaded anywhere.</p>
+  <p class="credits">© 2026 Daniel Sandner · Apache License 2.0 · <a href="https://github.com/eigensoundlab/SFXWorkbench" target="_blank" rel="noopener">Source on GitHub</a> · More sound experiments at <a href="https://eigensound.com" target="_blank" rel="noopener">eigensound.com</a></p>
+</footer>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script type="module" src="src/main.js"></script>
 </body>

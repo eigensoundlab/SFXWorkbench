@@ -9,7 +9,10 @@
  *   u: unit/format (see fmtVal in src/app/format.js)   d: default value
  *   type: 'select' (with opts: [[value, label]]) or 'bool'; omit for a slider
  *   when / whenNot: key of a bool param that enables / disables this row
+ *   show: { k, in: [values] } hides the row unless param k has one of the values (used by generator engines)
  */
+import { MATERIALS, SHAPES } from '../dsp/physical.js';
+
 
 export const STRETCH_METHODS = [['wsola', 'Clean: impacts, foley, noise'], ['pv', 'Spectral: tonal, smoother'], ['smear', 'Extreme smear: drones, ambience']];
 export const FXDEF = {
@@ -55,6 +58,14 @@ export const FXDEF = {
   denoise: { name: 'Noise reduction', group: 'Tone', hint: 'Learns the noise floor from the quietest moments. Best on recordings with some room tone.', params: [
     { k: 'reduce', l: 'Reduce by', min: 0, max: 40, step: 1, u: 'cut', d: 18 },
     { k: 'sens', l: 'Sensitivity', min: 0.5, max: 4, step: 0.1, u: 'ratio', d: 1.5 }] },
+  resonate: { name: 'Resonator body', group: 'Tone', hint: 'Plays the sound through a virtual object, as if it were struck through metal, wood or glass. Try it on recordings of taps and knocks.', params: [
+    { k: 'material', l: 'Material', type: 'select', opts: Object.entries(MATERIALS).map(([k, m]) => [k, m.name]), d: 'steel' },
+    { k: 'shape', l: 'Shape', type: 'select', opts: Object.entries(SHAPES).map(([k, m]) => [k, m.name]), d: 'plate' },
+    { k: 'size', l: 'Size (pitch)', min: 30, max: 8000, log: true, u: 'Hz', d: 300 },
+    { k: 'modes', l: 'Modes', min: 2, max: 32, step: 1, u: '', d: 16 },
+    { k: 'ring', l: 'Ring time', min: 0.05, max: 6, log: true, u: 'ratio', d: 1 },
+    { k: 'pos', l: 'Strike position', min: 1, max: 50, step: 1, u: '%', d: 25 },
+    { k: 'mix', l: 'Mix', min: 0, max: 100, u: '%', d: 70 }] },
   ring: { name: 'Ring modulator', group: 'Modulation', params: [
     { k: 'freq', l: 'Frequency', min: 1, max: 4000, log: true, u: 'Hz', d: 120 },
     { k: 'sweep', l: 'Sweep the frequency', type: 'bool', d: false },
@@ -75,6 +86,12 @@ export const FXDEF = {
     { k: 'fb', l: 'Feedback', min: 0, max: 95, u: '%', d: 40 },
     { k: 'damp', l: 'Echo tone', min: 500, max: 20000, log: true, u: 'Hz', d: 6000 },
     { k: 'mix', l: 'Echo level', min: 0, max: 100, u: '%', d: 35 }] },
+  disperse: { name: 'Dispersion / spring', group: 'Space', hint: 'Delays low frequencies more than high ones, so clicks turn into descending "pew" chirps. Feedback adds spring-reverb repeats.', params: [
+    { k: 'amount', l: 'Amount', min: 0, max: 100, u: '%', d: 80 },
+    { k: 'stages', l: 'Length', min: 10, max: 600, log: true, u: '', d: 200 },
+    { k: 'fb', l: 'Feedback', min: 0, max: 90, u: '%', d: 30 },
+    { k: 'delay', l: 'Loop delay', min: 5, max: 150, log: true, u: 'ms', d: 35 },
+    { k: 'mix', l: 'Mix', min: 0, max: 100, u: '%', d: 60 }] },
   reverb: { name: 'Reverb', group: 'Space', params: [
     { k: 'size', l: 'Room size', min: 0, max: 100, u: '%', d: 70 },
     { k: 'damp', l: 'Damping', min: 0, max: 100, u: '%', d: 50 },
