@@ -4,6 +4,7 @@
  * Module map: see docs/ARCHITECTURE.md.
  */
 import * as D from './dsp/index.js';
+import { VERSION } from './version.js';
 import { $ } from './app/dom.js';
 import { S, newSound, makeFx } from './app/state.js';
 import { PRESETS } from './config/presets.js';
@@ -16,7 +17,7 @@ import { renderDeck, initDeck, edit, undo, playSource, updateSelInfo } from './a
 import { renderChain, initEffects } from './app/panels/effects.js';
 import { renderVarParams, renderVars, initVariations } from './app/panels/variations.js';
 import { renderMix, initCombine } from './app/panels/combine.js';
-import { rollGenQuiet, initGenerate } from './app/panels/generate.js';
+import { rollGenQuiet, initGenerate, drawModes } from './app/panels/generate.js';
 import { updateSliceInfo, initSlice } from './app/panels/slice.js';
 import { initRecorder, recorderBusy, toggleRecord } from './app/recorder.js';
 import { initFolders } from './app/folders.js';
@@ -57,8 +58,8 @@ function initShortcuts() {
 }
 
 function initRedraw() {
-  const redraw = () => { for (const id of ['#wave-src', '#wave-out', '#wave-gen', '#wave-acc']) $(id)._c = null; drawSrc(); drawOut(); drawGen(); drawAcc(); };
-  new ResizeObserver(() => { drawSrc(); drawOut(); drawGen(); drawAcc(); }).observe($('#wave-src'));
+  const redraw = () => { for (const id of ['#wave-src', '#wave-out', '#wave-gen', '#wave-acc']) $(id)._c = null; drawSrc(); drawOut(); drawGen(); drawAcc(); drawModes(); };
+  new ResizeObserver(() => { drawSrc(); drawOut(); drawGen(); drawAcc(); drawModes(); }).observe($('#wave-src'));
   try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw); } catch (e) { /* older browsers */ }
   new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(redraw);
@@ -95,6 +96,7 @@ function loadExamples() {
 }
 
 function boot() {
+  $('#app-version').textContent = VERSION;
   loadExamples();
   initDeck(); initLibrary(); initRail(); initRecorder(); initFolders(); initAccents(); initEffects(); initVariations(); initCombine(); initGenerate(); initSlice();
   initShortcuts(); initRedraw();

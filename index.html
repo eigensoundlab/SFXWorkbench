@@ -212,6 +212,7 @@
       <div class="pane-bar">
         <label>Recipe <select id="acc-recipe"></select></label>
         <label>Build on <select id="acc-src"><option value="out">Sound with effects</option><option value="src">Source only</option></select></label>
+        <label title="For transfer: accents placed at the reference's events, or its audio grafted in">Reference <select id="acc-ref"></select></label>
         <button class="btn" id="acc-mutate" type="button" title="Nudge every accent setting a little and change the seed">Mutate</button>
         <button class="btn" id="acc-clear" type="button">Clear</button>
       </div>
@@ -233,6 +234,13 @@
         <span class="seg seg-lg" id="gen-engines" role="group" aria-label="Generator engine"></span>
       </div>
       <p id="gen-desc" class="mode-desc"></p>
+      <div id="gen-measure" class="measure" hidden>
+        <div class="pane-bar">
+          <button class="btn primary" id="gen-measure-btn" type="button">Measure selected sound</button>
+          <span id="gen-measure-info" class="hint" role="status"></span>
+        </div>
+        <canvas id="modes-view" class="modes-view" aria-label="Measured modes by frequency: grey lines as measured, coloured lines after your changes; taller is louder, more opaque rings longer"></canvas>
+      </div>
       <div id="gen-types" class="gen-types" role="group" aria-label="Roll a sound of this type"></div>
       <div class="gen-preview">
         <canvas id="wave-gen" class="wave" aria-label="Generated sound preview"></canvas>
@@ -282,7 +290,7 @@
 
 <footer class="foot">
   <p id="env-note">Everything runs in this browser tab. No audio is uploaded anywhere.</p>
-  <p class="credits">© 2026 Daniel Sandner · Apache License 2.0 · <a href="https://github.com/eigensoundlab/SFXWorkbench" target="_blank" rel="noopener">Source on GitHub</a> · More sound experiments at <a href="https://eigensound.com" target="_blank" rel="noopener">eigensound.com</a></p>
+  <p class="credits">SFX Workbench <span id="app-version"></span> · © 2026 Daniel Sandner · Apache License 2.0 · <a href="https://github.com/eigensoundlab/SFXWorkbench" target="_blank" rel="noopener">Source on GitHub</a> · More sound experiments at <a href="https://eigensound.com" target="_blank" rel="noopener">eigensound.com</a></p>
 </footer>
 <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 <script type="module" src="src/main.js"></script>

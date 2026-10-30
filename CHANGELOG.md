@@ -5,6 +5,23 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-30
+
+### Added
+- Resynth engine in the Generate tab (modal resynthesis): measures the resonant modes of a recorded hit (frequency,
+  level and decay time of each, by spectral peak picking and decay fitting) and rebuilds it as a physical object.
+  Reshape it (size, ring time, high-mode tilt, stiffness, morph towards another material's damping, dispersion), keep
+  some of the original attack, and strike, scrape, roll, bounce or break it with the Impact engine's causes and
+  aftermath. A mode view shows measured and reshaped modes. 13 types such as Bigger and darker, Turn to glass, Drop
+  it, Break it and Blaster from it.
+- Accent transfer: choose a reference sound in the Accents tab. "Reference rhythm" places accents at the reference's
+  events relative to this sound's peak (optionally scaled to its length); the "Reference audio (graft)" kind
+  transplants the reference's own events. Variations use the reference too.
+- Accent refinements: duck the sound under an accent, pan each accent (a mono result becomes stereo), tune to the
+  pitch at the anchor ("Match the pitch at that point"), and a chance per accent so variations differ.
+- 8 new accent recipes (Transfer, Refinements).
+- Version number in the footer, checked against package.json by a test.
+
 ## [0.4.0] - 2026-10-30
 
 ### Added
@@ -63,7 +80,8 @@ First public version.
 - WAV import/export keeping sample rate, channels and bit depth; zip for multi-file saves.
 - Single-file offline build, tests, CI and GitHub Pages deployment.
 
-[Unreleased]: https://github.com/eigensoundlab/SFXWorkbench/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/eigensoundlab/SFXWorkbench/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/eigensoundlab/SFXWorkbench/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/eigensoundlab/SFXWorkbench/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/eigensoundlab/SFXWorkbench/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/eigensoundlab/SFXWorkbench/releases/tag/v0.2.0

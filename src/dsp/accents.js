@@ -142,9 +142,9 @@ export function soundKey(a) {
 }
 
 /** Body size (lowest mode, Hz) for an accent. tune: match | octave (below) | fifth (above) | free. */
-export function tunedSize(a, p, lo = 40, hi = 8000) {
+export function tunedSize(a, p, lo = 40, hi = 8000, key = soundKey(a)) {
   if (p.tune === 'free') return p.size;
-  const base = soundKey(a);
+  const base = key;
   const f = p.tune === 'octave' ? base / 2 : p.tune === 'fifth' ? base * 1.5 : base;
   return clamp(f, lo, hi);
 }
@@ -170,15 +170,17 @@ const material = (a, p) => (p.material === 'auto' ? autoMaterial(a) : p.material
 
 /**
  * Each kind returns { x: Float32Array (mono, peak 1), align: 'after' | 'before' }.
- * 'after' starts at the anchor, 'before' ends at it (lead-ins). ctx: { src (mono source), t (anchor sample), a, sr, R, seed }.
+ * 'after' starts at the anchor, 'before' ends at it (lead-ins).
+ * ctx: { src (mono source), t (anchor sample), a (analysis), key (tuning key in Hz), sr, R, seed,
+ *        ref (mono reference or null), rt (reference event sample, for 'ref' anchors) }.
  */
 export const ACCENT_KINDS = {
   hit(p, c) {
-    const x = impactGen({ ...IMPACT_BASE, material: material(c.a, p), shape: p.shape, size: tunedSize(c.a, p), ring: p.ring, hard: p.hard, contact: 35, seed: c.seed }, c.sr)[0];
+    const x = impactGen({ ...IMPACT_BASE, material: material(c.a, p), shape: p.shape, size: tunedSize(c.a, p, 40, 8000, c.key), ring: p.ring, hard: p.hard, contact: 35, seed: c.seed }, c.sr)[0];
     return { x, align: 'after' };
   },
   ring(p, c) {
-    const modes = buildBody({ material: material(c.a, p), shape: p.shape, size: tunedSize(c.a, p), modes: 16, ring: p.ring, pos: 0.2 + 0.3 * c.R(), irregular: 0.3 }, c.sr, c.R);
+    const modes = buildBody({ material: material(c.a, p), shape: p.shape, size: tunedSize(c.a, p, 40, 8000, c.key), modes: 16, ring: p.ring, pos: 0.2 + 0.3 * c.R(), irregular: 0.3 }, c.sr, c.R);
     const exc = windowAt(c.src, c.t, p.win, c.sr);
     return { x: normalize(trimEnd(normalize(resonateMono(exc, modes, c.sr, Math.round(Math.min(4, 6 * maxTau(modes)) * c.sr))))), align: 'after' };
   },
@@ -187,7 +189,7 @@ export const ACCENT_KINDS = {
     return { x: normalize(trimEnd(normalize(disperseMono(exc, c.sr, amt, 80 + 420 * amt, 0.2, 30)))), align: 'after' };
   },
   sub(p, c) {
-    const f = p.tune === 'free' ? clamp(p.size, 25, 160) : (() => { let v = soundKey(c.a); while (v > 70) v /= 2; while (v < 35) v *= 2; return v; })();
+    const f = p.tune === 'free' ? clamp(p.size, 25, 160) : (() => { let v = c.key; while (v > 70) v /= 2; while (v < 35) v *= 2; return v; })();
     const L = Math.round((p.dur / 1000) * c.sr), x = new Float32Array(L);
     let ph = 0;
     for (let i = 0; i < L; i++) {
@@ -241,9 +243,14 @@ export const ACCENT_KINDS = {
     return { x, align: 'after' };
   },
   click(p, c) {
-    const size = p.tune === 'free' ? p.size : clamp(tunedSize(c.a, p) * 4, 1500, 7000);
+    const size = p.tune === 'free' ? p.size : clamp(tunedSize(c.a, p, 40, 8000, c.key) * 4, 1500, 7000);
     const x = impactGen({ ...IMPACT_BASE, material: material(c.a, p), shape: 'bar', size, modes: 8, ring: 0.06, hard: 100, contact: 70, seed: c.seed }, c.sr)[0];
     return { x, align: 'after' };
+  },
+  graft(p, c) {
+    // The reference's own audio at its event (transplant); without a reference, the sound's own audio at the anchor.
+    const from = c.ref || c.src, at = c.ref && c.rt != null ? c.rt : c.t;
+    return { x: normalize(windowAt(from, at, p.win, c.sr)), align: 'after' };
   },
   sparks(p, c) {
     const x = textureGen({ kind: 'sparks', dur: p.dur / 1000, fadeIn: 0, fadeOut: p.dur * 0.5, width: 0, seed: c.seed, density: 350, shape: 'burst', pitch: 7000, spread: 2, hiss: 35 }, c.sr)[0];
@@ -251,58 +258,101 @@ export const ACCENT_KINDS = {
   },
 };
 
-/** Sample positions of an anchor. anchor: start | attack | peak | each | tail | end | at (p.at % of length) | time (p.time seconds). */
-export function anchorTimes(a, p) {
+/**
+ * Anchor positions of a slot: [{ t, db, rt }] with t the sample position in the sound, db an extra level (dB) and
+ * rt the matching sample in the reference ('ref' anchor only).
+ * anchor: start | attack | peak | each | tail | end | at (p.at % of length) | time (p.time seconds) |
+ *         ref (the reference's secondary events, placed relative to this sound's peak; p.fit scales the timing).
+ */
+export function anchorPoints(a, p, refA = null) {
+  const one = t => [{ t, db: 0, rt: null }];
   switch (p.anchor) {
-    case 'start': return [a.onset];
-    case 'attack': case 'peak': return [a.peakAt];
-    case 'each': return a.transients.slice(0, 32).map(t => t.at);
-    case 'tail': return [a.bodyEnd];
-    case 'end': return [a.tailEnd];
-    case 'at': return [Math.round(clamp(p.at / 100, 0, 1) * a.n)];
-    case 'time': return [Math.round(clamp(p.time || 0, 0, a.n / a.sr) * a.sr)];
-    default: return [a.onset];
+    case 'start': return one(a.onset);
+    case 'attack': case 'peak': return one(a.peakAt);
+    case 'each': return a.transients.slice(0, 32).map(t => ({ t: t.at, db: 0, rt: null }));
+    case 'tail': return one(a.bodyEnd);
+    case 'end': return one(a.tailEnd);
+    case 'at': return one(Math.round(clamp(p.at / 100, 0, 1) * a.n));
+    case 'time': return one(Math.round(clamp(p.time || 0, 0, a.n / a.sr) * a.sr));
+    case 'ref': {
+      if (!refA) return [];
+      const mainGap = Math.round(0.02 * refA.sr);
+      const span = Math.max(1, refA.tailEnd - refA.peakAt), scale = p.fit ? Math.max(1, a.tailEnd - a.peakAt) / span : 1;
+      return refA.transients
+        .filter(ev => Math.abs(ev.at - refA.peakAt) > mainGap && Math.abs(ev.at - refA.onset) > mainGap)
+        .slice(0, 32)
+        .map(ev => ({ t: Math.round(a.peakAt + (ev.at - refA.peakAt) * scale), db: ev.strength, rt: ev.at }));
+    }
+    default: return one(a.onset);
   }
 }
+/** Sample positions of an anchor (without reference events). */
+export const anchorTimes = (a, p) => anchorPoints(a, p).map(x => x.t);
 
 /**
  * Mix accents into a sound.
  * @param {Float32Array[]} chs source channels
  * @param {object[]} slots accent params (with on: boolean)
- * @param {{ analysis?: object, seed?: number, jitter?: boolean, safe?: boolean }} opts
+ * @param {{ analysis?: object, reference?: Float32Array[], seed?: number, jitter?: boolean, safe?: boolean }} opts
+ *   reference: a second sound at the same sample rate, for the 'ref' anchor and 'graft' kind (accent transfer).
  *   jitter: small random changes per render (offset, level, size) for variations. safe: keep the peak at or below -1 dBFS.
+ * Slot refinements: duck (dB, lowers the sound under the accent), pan (-100..100; makes a mono result stereo),
+ * chance (% probability that each accent appears), tune 'local' (match the pitch at the anchor).
  * @returns {{ ch: Float32Array[], lead: number, marks: { slot:number, start:number, len:number, anchor:number }[], analysis: object }}
  *   lead: samples of silence added in front when a lead-in accent starts before 0; marks use output positions.
  */
 export function renderAccents(chs, sr, slots, opts = {}) {
   const a = opts.analysis || analyzeStructure(chs, sr), src = monoMix(chs), R = rng((opts.seed | 0) * 7919 + 3);
+  const ref = opts.reference && len(opts.reference) ? monoMix(opts.reference) : null;
+  const refA = ref ? analyzeStructure(opts.reference, sr) : null;
   const placed = [];
   slots.forEach((p, si) => {
     if (!p || !p.on || !ACCENT_KINDS[p.kind]) return;
-    anchorTimes(a, p).forEach((t0, k) => {
+    anchorPoints(a, p, refA).forEach((pt, k) => {
+      if ((p.chance ?? 100) < 100 && R() * 100 >= p.chance) return;
       const jit = opts.jitter ? { off: (R() * 2 - 1) * 8, lvl: (R() * 2 - 1) * 1.5, size: 1 + (R() * 2 - 1) * 0.04 } : { off: 0, lvl: 0, size: 1 };
-      const t = Math.round(t0 + (p.offset + jit.off) / 1000 * sr);
+      const t0 = pt.t, t = Math.round(t0 + (p.offset + jit.off) / 1000 * sr), tc = Math.max(0, Math.min(src.length - 1, t0));
+      let key = soundKey(a);
+      if (p.tune === 'local') { const lp = estimatePitch(src, Math.min(src.length - 1, tc + Math.round(0.01 * sr)), sr); if (lp && lp.clarity > 0.8) key = lp.hz; }
       const q = { ...p, size: p.size * jit.size };
-      const ctx = { src, t: Math.max(0, Math.min(src.length - 1, t0)), a, sr, R, seed: (p.seed | 0) + k * 31 + (opts.seed | 0) * 101 };
+      const ctx = { src, t: tc, a, key, sr, R, ref, rt: pt.rt, seed: (p.seed | 0) + k * 31 + (opts.seed | 0) * 101 };
       const g = ACCENT_KINDS[p.kind](q, ctx);
-      const ref = p.follow ? Math.max(localLevel(src, t0, sr), a.peak * 0.05) : a.peak;
-      const amp = ref * dbToLin(p.level + jit.lvl);
+      const isRef = p.anchor === 'ref';
+      const base = p.follow && !isRef ? Math.max(localLevel(src, tc, sr), a.peak * 0.05) : a.peak;
+      const amp = base * dbToLin(p.level + jit.lvl + pt.db);
       const start = g.align === 'before' ? t - g.x.length : t;
-      placed.push({ slot: si, start, x: g.x, amp, anchor: t0 });
+      placed.push({ slot: si, start, x: g.x, amp, anchor: t0, pan: clamp((p.pan || 0) / 100, -1, 1), duck: Math.min(0, p.duck || 0) });
     });
   });
   const lead = Math.max(0, ...placed.map(pl => -pl.start));
   const n0 = len(chs), total = Math.min(Math.max(n0 + lead, ...placed.map(pl => pl.start + lead + pl.x.length)), 60 * sr);
-  const out = mapChannels(chs, chs.length).map(c => { const o = new Float32Array(total); o.set(c.subarray(0, Math.min(c.length, total - lead)), lead); return o; });
+  const panned = placed.some(pl => pl.pan !== 0), nch = panned ? Math.max(2, chs.length) : chs.length;
+  const out = mapChannels(chs, nch).map(c => { const o = new Float32Array(total); o.set(c.subarray(0, Math.min(c.length, total - lead)), lead); return o; });
+
+  // Ducking: lower the sound (not the accents) while an accent sounds, with 5 ms attack and 80 ms release.
+  if (placed.some(pl => pl.duck < 0)) {
+    const g = new Float32Array(total).fill(1), att = Math.round(0.005 * sr), rel = Math.round(0.08 * sr);
+    for (const pl of placed) {
+      if (!(pl.duck < 0)) continue;
+      const d = dbToLin(pl.duck), s0 = pl.start + lead, s1 = s0 + Math.min(pl.x.length, Math.round(0.3 * sr));
+      for (let i = Math.max(0, s0 - att); i < Math.min(total, s1 + rel); i++) {
+        const u = i < s0 ? (s0 - i) / att : i > s1 ? (i - s1) / rel : 0, v = d + (1 - d) * Math.min(1, u);
+        if (v < g[i]) g[i] = v;
+      }
+    }
+    for (const o of out) for (let i = 0; i < total; i++) o[i] *= g[i];
+  }
+
   for (const pl of placed) {
-    const s = pl.start + lead;
-    for (const o of out) for (let i = 0; i < pl.x.length; i++) { const j = s + i; if (j >= 0 && j < total) o[j] += pl.x[i] * pl.amp; }
+    const s = pl.start + lead, th = (pl.pan + 1) * Math.PI / 4;
+    const gains = nch === 2 ? [Math.cos(th) * Math.SQRT2, Math.sin(th) * Math.SQRT2] : out.map(() => 1);
+    out.forEach((o, ci) => { const gg = pl.amp * (gains[ci] ?? 1); for (let i = 0; i < pl.x.length; i++) { const j = s + i; if (j >= 0 && j < total) o[j] += pl.x[i] * gg; } });
   }
   if (opts.safe !== false) {
     const pk = peak(out), lim = dbToLin(-1);
     if (pk > lim && pk > 0) for (const o of out) for (let i = 0; i < o.length; i++) o[i] *= lim / pk;
   }
-  return { ch: out, lead, analysis: a, marks: placed.map(pl => ({ slot: pl.slot, start: pl.start + lead, len: pl.x.length, anchor: pl.anchor + lead })) };
+  return { ch: out, lead, analysis: a, refAnalysis: refA, marks: placed.map(pl => ({ slot: pl.slot, start: pl.start + lead, len: pl.x.length, anchor: pl.anchor + lead })) };
 }
 
 /** Readable summary of an analysis, for the UI. */

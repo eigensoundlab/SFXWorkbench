@@ -85,7 +85,9 @@ function modeGain(k, pos, irr, R) {
 
 /** Same body struck somewhere else: frequencies and decays stay, mode gains change. */
 export function restrike(modes, pos, irr, R) {
-  return modes.map(m => ({ ...m, g: modeGain(m.k, clamp(pos, 0.01, 0.99), clamp(irr, 0, 1), R) }));
+  pos = clamp(pos, 0.01, 0.99); irr = clamp(irr, 0, 1);
+  // Measured bodies keep their measured gains (gm) and only get a mode-shape weighting for the new position.
+  return modes.map(m => ({ ...m, g: m.gm != null ? m.gm * (0.35 + 0.65 * Math.abs(Math.sin(Math.PI * (m.k + 1) * pos + irr * R()))) : modeGain(m.k, pos, irr, R) }));
 }
 
 /** Longest decay time in a set of modes. */
@@ -214,7 +216,8 @@ export function impactGen(p, sr) {
   const tc = 0.01 * Math.pow(0.002, clamp(p.hard / 100, 0, 1));
   const tcS = tc * sr;
   const body = { material: p.material, shape: p.shape, size: p.size, modes: p.modes, ring: p.ring, pos: p.pos / 100, irregular: p.irregular / 100 };
-  const main = buildBody(body, sr, R), tauMax = maxTau(main);
+  // p._modes: a ready-made body (measured by modal resynthesis) replaces the material/shape body.
+  const main = p._modes ? p._modes.map(m => ({ ...m })) : buildBody(body, sr, R), tauMax = maxTau(main);
   const contact = p.contact / 100 * (0.3 + mat.grit);
   const dur = p.dur / 1000, spread = p.spread / 1000, rumbleDecay = 0.2 + 0.9 * p.rumble / 100;
   const disp = p.disp / 100, stages = Math.round(40 + 360 * disp);

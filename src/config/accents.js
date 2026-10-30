@@ -15,6 +15,7 @@ export const ACCENT_NAMES = {
   whoosh: 'Whoosh into the anchor',
   slap: 'Back slap / echo of the attack',
   stutter: 'Stutter / glitch repeat',
+  graft: 'Reference audio (graft)',
   debris: 'Debris settle',
   shell: 'Shell drop',
   click: 'Mechanical click',
@@ -24,23 +25,28 @@ export const ACCENT_NAMES = {
 export const ANCHORS = [
   ['start', 'Start of the sound'], ['peak', 'Peak (end of attack)'], ['each', 'Every transient'],
   ['tail', 'Start of the tail'], ['end', 'End of the sound'], ['at', 'Position (%)'], ['time', 'Selection start'],
+  ['ref', 'Reference rhythm (events of the reference sound)'],
 ];
 
 const K = list => ({ k: 'kind', in: list });
 const TUNED = ['hit', 'ring', 'sub', 'click'];
 const MATERIAL_KINDS = ['hit', 'ring', 'debris', 'click'];
-const WINDOWED = ['ring', 'zap', 'swell', 'slap', 'stutter'];
+const WINDOWED = ['ring', 'zap', 'swell', 'slap', 'stutter', 'graft'];
 
 export const ACCENT_SPECS = [
   { k: 'kind', l: 'Accent', type: 'select', opts: Object.entries(ACCENT_NAMES), d: 'hit' },
   { k: 'anchor', l: 'Place at', type: 'select', opts: ANCHORS, d: 'end' },
   { k: 'at', l: 'Position', min: 0, max: 100, step: 1, u: '%', d: 50, show: { k: 'anchor', in: ['at'] } },
+  { k: 'fit', l: 'Scale the reference timing to this sound', type: 'bool', d: true, show: { k: 'anchor', in: ['ref'] } },
   { k: 'offset', l: 'Offset', min: -500, max: 1000, step: 1, u: 'ms', d: 0 },
   { k: 'level', l: 'Level', min: -36, max: 6, step: 0.5, u: 'dB', d: -6 },
   { k: 'follow', l: 'Follow the sound\'s loudness at that point', type: 'bool', d: true },
+  { k: 'duck', l: 'Duck the sound', min: -24, max: 0, step: 0.5, u: 'dB', d: 0 },
+  { k: 'pan', l: 'Pan', min: -100, max: 100, step: 1, u: '%', d: 0 },
+  { k: 'chance', l: 'Chance', min: 0, max: 100, step: 1, u: '%', d: 100 },
   { k: 'material', l: 'Material', type: 'select', opts: [['auto', 'Auto (from the sound)'], ...Object.entries(MATERIALS).map(([k, m]) => [k, m.name])], d: 'auto', show: K(MATERIAL_KINDS) },
   { k: 'shape', l: 'Shape', type: 'select', opts: Object.entries(SHAPES).map(([k, m]) => [k, m.name]), d: 'plate', show: K(['hit', 'ring']) },
-  { k: 'tune', l: 'Tuning', type: 'select', opts: [['match', 'Match the sound'], ['octave', 'Octave below'], ['fifth', 'Fifth above'], ['free', 'Free (use Size)']], d: 'match', show: K(TUNED) },
+  { k: 'tune', l: 'Tuning', type: 'select', opts: [['match', 'Match the sound'], ['local', 'Match the pitch at that point'], ['octave', 'Octave below'], ['fifth', 'Fifth above'], ['free', 'Free (use Pitch)']], d: 'match', show: K(TUNED) },
   { k: 'size', l: 'Pitch (Free tuning)', min: 25, max: 8000, log: true, u: 'Hz', d: 400, show: K(TUNED) },
   { k: 'ring', l: 'Ring time', min: 0.05, max: 6, log: true, u: 'ratio', d: 0.8, show: K(['hit', 'ring']) },
   { k: 'hard', l: 'Hardness', min: 0, max: 100, step: 1, u: '%', d: 80, show: K(['hit']) },
@@ -111,5 +117,20 @@ export const ACCENT_RECIPES = {
     'Confirm: click before': [{ kind: 'click', anchor: 'start', offset: -30, level: -10, follow: false }],
     'Error: stutter': [{ kind: 'stutter', anchor: 'peak', level: -6, win: 30, repeats: 3, gap: 45 }],
     'Coin: shell tink after': [{ kind: 'shell', anchor: 'tail', level: -14, follow: false }],
+  },
+  'Transfer (needs a reference)': {
+    'Graft the reference\'s events': [{ kind: 'graft', anchor: 'ref', level: 0, follow: false, win: 120, fit: false }],
+    'Graft, fitted to this sound': [{ kind: 'graft', anchor: 'ref', level: 0, follow: false, win: 90, fit: true }],
+    'Reference rhythm as impacts': [{ kind: 'hit', anchor: 'ref', level: -4, follow: false, material: 'auto', tune: 'match', ring: 0.5, fit: true }],
+    'Reference rhythm as clicks': [{ kind: 'click', anchor: 'ref', level: -6, follow: false, fit: true }],
+  },
+  'Refinements': {
+    'Back impact with ducking': [{ kind: 'hit', anchor: 'tail', level: -3, duck: -9, material: 'auto', tune: 'octave', hard: 60, ring: 0.4 }],
+    'Wide reaction (left and right)': [
+      { kind: 'slap', anchor: 'peak', offset: 90, level: -12, pan: -70, win: 120, repeats: 1, tone: 1600 },
+      { kind: 'slap', anchor: 'peak', offset: 135, level: -14, pan: 70, win: 120, repeats: 1, tone: 1300 },
+    ],
+    'Ring that follows the pitch': [{ kind: 'ring', anchor: 'each', level: -10, tune: 'local', material: 'glass', shape: 'shell', win: 30, ring: 0.7 }],
+    'Random rattle (half the time)': [{ kind: 'shell', anchor: 'tail', level: -14, follow: false, chance: 50 }],
   },
 };

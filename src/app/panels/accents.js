@@ -5,7 +5,7 @@
  */
 import * as D from '../../dsp/index.js';
 import { $, h, toast } from '../dom.js';
-import { S, cur, newSound } from '../state.js';
+import { S, cur, byId, newSound } from '../state.js';
 import { defaults, fmtDur, safeName } from '../format.js';
 import { ACCENT_SPECS, ACCENT_RECIPES, SLOTS } from '../../config/accents.js';
 import { MATERIALS } from '../../dsp/physical.js';
@@ -24,6 +24,25 @@ export function activeSlots(sound) {
 }
 export const hasAccents = () => S.acc.slots.some(sl => sl.on);
 
+let refCache = { key: '', ch: null };
+/** The reference sound for transfer, resampled to `sr` if needed; null when none is chosen. */
+export function accentReference(sr) {
+  const r = byId(S.acc.ref);
+  if (!r) return null;
+  const key = `${r.id}:${r.ver}:${sr}`;
+  if (refCache.key !== key) refCache = { key, ch: r.sr === sr ? r.ch : D.resample(r.ch, r.sr, sr) };
+  return refCache.ch;
+}
+
+/** Fill the reference menu from the library (keeps the choice if the sound still exists). */
+export function renderRefOptions() {
+  const sel = $('#acc-ref');
+  if (!sel || !S.acc) return;
+  if (!byId(S.acc.ref)) S.acc.ref = null;
+  sel.replaceChildren(h('option', { value: '', text: '— none —' }), ...S.sounds.map(s => h('option', { value: String(s.id), text: s.name })));
+  sel.value = S.acc.ref ? String(S.acc.ref) : '';
+}
+
 /** The sound the accents are built on: the source, or the source through the effect chain (without finishing). */
 function baseAudio(s) {
   const useChain = S.acc.src === 'out' && S.chainOn && S.chain.some(f => f.on);
@@ -37,7 +56,7 @@ export function renderAccentResult() {
   if (!s) { S.accRes = null; drawAcc(); return null; }
   try {
     const base = baseAudio(s);
-    const r = D.renderAccents(base, s.sr, activeSlots(s), { seed: S.acc.seed });
+    const r = D.renderAccents(base, s.sr, activeSlots(s), { seed: S.acc.seed, reference: accentReference(s.sr) });
     S.accRes = { ...r, sr: s.sr, src: s, ver: (S.accRes ? S.accRes.ver : 0) + 1 };
   } catch (e) {
     console.error(e); S.accRes = null; toast('Could not render the accents: ' + e.message, 'err');
@@ -51,11 +70,14 @@ function renderReadout() {
   if (!r) { el.replaceChildren(); return; }
   const d = D.describeStructure(r.analysis), hz = v => (v >= 1000 ? (v / 1000).toFixed(2) + ' kHz' : Math.round(v) + ' Hz');
   const chip = (label, value) => h('span', { class: 'chip', title: label }, h('b', { text: label + ' ' }), value);
-  el.replaceChildren(
+  el.replaceChildren(...[
     chip('Attack', `${d.attackMs} ms`), chip('Peak', `${fmtDur(d.peakS)} s`), chip('Tail from', `${fmtDur(d.bodyEndS)} s`),
     chip('Ends', `${fmtDur(d.tailEndS)} s`), chip('Transients', String(d.transients)),
     chip(d.pitch ? 'Pitch' : 'Key', hz(d.key)), chip('Character', d.character), chip('Auto material', MATERIALS[d.material].name),
-    chip('Result', `${fmtDur(D.len(r.ch) / r.sr)} s${r.lead ? `, ${fmtDur(r.lead / r.sr)} s lead-in` : ''}`));
+    chip('Result', `${fmtDur(D.len(r.ch) / r.sr)} s${r.lead ? `, ${fmtDur(r.lead / r.sr)} s lead-in` : ''}${r.ch.length !== r.src.ch.length ? ', stereo (panned)' : ''}`),
+    r.refAnalysis ? chip('Reference events', String(Math.max(0, r.refAnalysis.transients.length - 1))) : null,
+    S.acc.slots.some(sl => sl.on && sl.anchor === 'ref') && !r.refAnalysis ? chip('Reference', 'choose one for "Reference rhythm"') : null,
+  ].filter(Boolean));
 }
 
 /** Waveform of the result with the source structure (attack, body, tail, transients) and the accents marked. */
@@ -122,7 +144,9 @@ function mutate() {
 
 /** Wire the Accents tab. */
 export function initAccents() {
-  S.acc = { src: 'out', seed: 1, slots: Array.from({ length: SLOTS }, () => freshSlot()) };
+  S.acc = { src: 'out', seed: 1, ref: null, slots: Array.from({ length: SLOTS }, () => freshSlot()) };
+  renderRefOptions();
+  $('#acc-ref').onchange = e => { S.acc.ref = e.target.value ? +e.target.value : null; schedule(); };
   const rs = $('#acc-recipe');
   rs.replaceChildren(h('option', { value: '', text: 'Choose…' }), ...Object.entries(ACCENT_RECIPES).map(([g, items]) => h('optgroup', { label: g }, Object.keys(items).map(k => h('option', { value: g + '|' + k, text: k })))));
   rs.onchange = e => { const v = e.target.value; e.target.value = ''; if (!v) return; const [g, k] = v.split('|'); loadRecipe(ACCENT_RECIPES[g][k]); toast(`Loaded ${k}`); };

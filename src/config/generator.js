@@ -177,12 +177,47 @@ export const TEXTURE_TYPES = {
   'Earthquake / distant battle': () => ({ kind: 'rumble', pitch: lr(90, 180), gust: rr(60, 90), thuds: rr(60, 100), density: lr(0.8, 3), dur: 8, fadeIn: 600, fadeOut: 1200 }),
 };
 
+/* ---------- Resynth: a measured recording as an editable object ---------- */
+export const RESYNTH_GROUPS = [
+  ['Measured object', [
+    { k: 'modes', l: 'Modes used', min: 1, max: 48, step: 1, u: '', d: 24 },
+    { k: 'shift', l: 'Size (pitch ×)', min: 0.25, max: 4, log: true, u: 'ratio', d: 1 },
+    { k: 'ring', l: 'Ring time', min: 0.1, max: 8, log: true, u: 'ratio', d: 1 },
+    { k: 'tilt', l: 'High modes ring', min: -100, max: 100, step: 1, u: '%', d: 0 },
+    { k: 'stretch', l: 'Stiffness (spread)', min: -20, max: 20, step: 0.5, u: '%', d: 0 },
+    { k: 'morphMat', l: 'Morph towards', type: 'select', opts: [['none', 'Nothing (as measured)'], ...MAT_OPTS], d: 'none' },
+    { k: 'morphAmt', l: 'Morph amount', min: 0, max: 100, step: 1, u: '%', d: 60, show: { k: 'morphMat', in: Object.keys(MATERIALS) } },
+    { k: 'keepAttack', l: 'Original attack', min: 0, max: 100, step: 1, u: '%', d: 60, show: CAUSE(['hit']) },
+    { k: 'disp', l: 'Dispersion (chirp)', min: 0, max: 100, step: 1, u: '%', d: 0 },
+    { k: 'pos', l: 'Strike position (re-hits)', min: 1, max: 50, step: 1, u: '%', d: 25 }]],
+  ['Cause', [...IMPACT_GROUPS[0][1], { k: 'material', l: 'Contact and debris', type: 'select', opts: MAT_OPTS, d: 'steel' }]],
+  IMPACT_GROUPS[2],
+];
+const RS = o => () => ({ cause: 'hit', ...o() });
+export const RESYNTH_TYPES = {
+  'As measured': RS(() => ({ shift: 1, ring: 1, keepAttack: 70 })),
+  'Bigger and darker': RS(() => ({ shift: lr(0.4, 0.7), ring: lr(1.2, 2), tilt: rr(-40, -10), keepAttack: 40 })),
+  'Smaller': RS(() => ({ shift: lr(1.6, 3), ring: lr(0.5, 0.9), keepAttack: 40 })),
+  'Ring forever': RS(() => ({ ring: lr(3, 7), tilt: rr(0, 30), keepAttack: 50 })),
+  'Dead and dull': RS(() => ({ ring: lr(0.15, 0.35), tilt: rr(-80, -40), keepAttack: 60 })),
+  'Turn to glass': RS(() => ({ morphMat: 'glass', morphAmt: rr(60, 90), shift: lr(1.3, 2.2), stretch: rr(2, 8), keepAttack: 30 })),
+  'Turn to wood': RS(() => ({ morphMat: 'wood', morphAmt: rr(70, 95), shift: lr(0.6, 1), material: 'wood', keepAttack: 40 })),
+  'Turn to steel': RS(() => ({ morphMat: 'steel', morphAmt: rr(60, 90), keepAttack: 40 })),
+  'Drop it': RS(() => ({ bounces: ri(3, 8), gap: lr(100, 250), restit: rr(45, 70), roll: rr(0, 40), keepAttack: 60 })),
+  'Scrape it': () => ({ cause: 'scrape', dur: lr(600, 2000), rough: rr(30, 80), contact: rr(20, 50) }),
+  'Roll it': () => ({ cause: 'roll', dur: lr(1200, 3000), speed: lr(4, 14), ring: lr(0.4, 0.9) }),
+  'Break it': () => ({ cause: 'crack', clicks: ri(4, 9), dur: lr(150, 500), accel: rr(50, 85), debris: rr(50, 85), debrisPitch: lr(3, 7), spread: lr(400, 1200) }),
+  'Blaster from it': RS(() => ({ ring: lr(0.08, 0.2), disp: rr(90, 100), keepAttack: 10 })),
+};
+
 /** All generator engines, in switch order. */
 export const ENGINES = {
   synth: { name: 'Synth', render: 'synthGen', groups: GEN_GROUPS, types: GEN_TYPES,
     desc: 'Classic one-shot synthesis in the spirit of sfxr: oscillator, pitch slide, envelope and filter. Pick a type to roll a random sound of that kind.' },
   impact: { name: 'Impact', render: 'impactGen', groups: IMPACT_GROUPS, types: IMPACT_TYPES,
     desc: 'Physical model built as cause, object and aftermath: an action (hit, scrape, roll, crack) excites a resonant object of a chosen material and shape, followed by bounces, rolling, debris and rumble.' },
+  resynth: { name: 'Resynth', render: 'resynthGen', groups: RESYNTH_GROUPS, types: RESYNTH_TYPES, measure: true,
+    desc: 'Measures the resonant modes of a recorded hit, knock or clang (the selected sound) and turns it into an object you can strike, scrape, roll, bounce or break, resize, re-ring or morph into another material.' },
   texture: { name: 'Texture', render: 'textureGen', groups: TEXTURE_GROUPS, types: TEXTURE_TYPES,
     desc: 'Streams of small physical events and continuous phenomena: gravel, sparks, electricity, fire, bubbles, rain, wind, energy fields and rumble. Stereo, with fades, ready to loop or layer.' },
 };

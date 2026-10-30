@@ -78,3 +78,10 @@ test('every generator engine renders its defaults and every dice type', () => {
     }
   }
 });
+
+test('the version in the footer matches package.json', async () => {
+  const { VERSION } = await import('../src/version.js');
+  const { readFile } = await import('node:fs/promises');
+  const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  assert.equal(VERSION, pkg.version);
+});

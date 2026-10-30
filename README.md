@@ -27,7 +27,9 @@ and open it in any modern browser.
 - **Accents (context-aware):** analyses a sound's structure (attack, body, tail, transients, pitch, brightness) and
   adds accents where they belong: a mechanism click before the shot, a sub under the peak, a back slap or debris after
   the tail, a metal ring on every transient of a reload. Accents are tuned to the sound, choose a fitting material and
-  follow its loudness. 22 recipes; variations can include the accents, slightly different in each file.
+  follow its loudness. Transfer the event rhythm of a reference sound, or graft its events in. Ducking, panning,
+  local pitch tuning and per-accent chance. 30 recipes; variations can include the accents, slightly different in
+  each file.
 - **Combine and morph:** layer stack, spectral morph, cross-synthesis, convolution, envelope transfer, ring multiply and
   granular weave.
 - **Generate** with three engines, each with dice types to roll, mutate and refine:
@@ -35,6 +37,8 @@ and open it in any modern browser.
     resonant object (11 materials, 7 shapes), followed by bounces, rolling, debris and rumble. Ammo shells, coins,
     glass shatter, wall collapse, ice cracks, blaster wires, ricochets and more.
   - *Texture*: gravel and debris, sparks, electric arcs, fire, bubbles and drips, rain, wind, energy fields, rumble.
+  - *Resynth*: measures the resonant modes of a recorded hit and turns it into an editable object. Make your desk
+    knock bigger, turn a pan into glass, drop it, scrape it or break it.
   - *Synth*: classic one-shot synthesis in the spirit of sfxr.
   - "Add as layer" sends a generated sound straight into the layer stack to build action + effect designs.
 - **Slice and loop:** split many takes in one recording at the silences; build seamless loops and start/loop/stop sets

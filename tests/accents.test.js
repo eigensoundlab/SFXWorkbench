@@ -73,7 +73,35 @@ test('every recipe uses known keys, fits the slots and renders', () => {
   for (const [g, items] of Object.entries(ACCENT_RECIPES)) for (const [name, list] of Object.entries(items)) {
     assert.ok(list.length <= SLOTS, `${g}/${name}: too many accents`);
     for (const p of list) for (const k of Object.keys(p)) assert.ok(ACCENT_SPECS.some(sp => sp.k === k), `${g}/${name}: unknown key ${k}`);
-    const r = D.renderAccents(s, SR, list.map(p => slot(p)), {});
-    assert.ok(finite(r.ch) && r.marks.length >= 1, `${g}/${name}`);
+    const r = D.renderAccents(s, SR, list.map(p => slot(p)), { reference: threeHits() });
+    const optional = list.some(p => (p.chance ?? 100) < 100);
+    assert.ok(finite(r.ch) && (r.marks.length >= 1 || optional), `${g}/${name}`);
   }
+});
+
+test('reference rhythm places accents at the reference events, relative to the peak', () => {
+  const target = examples().gunshot, ref = threeHits(), a = D.analyzeStructure(target, SR), ra = D.analyzeStructure(ref, SR);
+  const r = D.renderAccents(target, SR, [slot({ kind: 'graft', anchor: 'ref', fit: false, follow: false, level: 0, win: 100 })], { analysis: a, reference: ref });
+  assert.equal(r.marks.length, 2, 'the main hit is skipped, the two later hits are transferred');
+  r.marks.forEach((m, i) => assert.equal(m.anchor - r.lead, a.peakAt + (ra.transients[i + 1].at - ra.peakAt)));
+  assert.equal(D.renderAccents(target, SR, [slot({ kind: 'hit', anchor: 'ref' })], {}).marks.length, 0, 'no reference, no events');
+});
+
+test('ducking lowers the sound under the accent, panning makes a mono sound stereo', () => {
+  const src = threeHits(), a = D.analyzeStructure(src, SR);
+  const plain = D.renderAccents(src, SR, [slot({ kind: 'click', anchor: 'each', level: -40 })], { analysis: a, safe: false });
+  const ducked = D.renderAccents(src, SR, [slot({ kind: 'click', anchor: 'each', level: -40, duck: -12 })], { analysis: a, safe: false });
+  const i = a.transients[1].at + Math.round(0.02 * SR);
+  assert.ok(Math.abs(ducked.ch[0][i]) < Math.abs(plain.ch[0][i]) * 0.5 + 1e-6, 'ducked by at least 6 dB');
+  const panned = D.renderAccents(src, SR, [slot({ kind: 'sub', anchor: 'peak', pan: -100 })], { analysis: a, safe: false });
+  assert.equal(panned.ch.length, 2);
+  const m = panned.marks[0], k = m.start + Math.round(0.01 * SR);
+  assert.ok(Math.abs(panned.ch[0][k] - src[0][k]) > 10 * Math.abs(panned.ch[1][k] - src[0][k]) , 'hard left');
+});
+
+test('chance drops some accents and the seed decides which', () => {
+  const src = threeHits(), sl = [slot({ kind: 'click', anchor: 'each', chance: 50 })];
+  const counts = [1, 2, 3, 4, 5, 6, 7, 8].map(seed => D.renderAccents(src, SR, sl, { seed }).marks.length);
+  assert.ok(counts.some(c => c < 3) && counts.some(c => c > 0), `counts ${counts}`);
+  assert.equal(D.renderAccents(src, SR, sl, { seed: 3 }).marks.length, D.renderAccents(src, SR, sl, { seed: 3 }).marks.length);
 });

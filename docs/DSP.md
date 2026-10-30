@@ -147,6 +147,31 @@ or glass.
   The mix is scaled down to -1 dBFS only if it would exceed that.
 - **Self-driven kinds** (ring, zap, slap, stutter, swell) take a window of the source at the anchor as their input,
   so the accent reacts to what actually happens there.
+- **Transfer:** the reference is analysed the same way. Its transients other than the main hit become anchors at the
+  same distance from this sound's peak (or scaled by the ratio of peak-to-tail lengths), with their level relative to
+  the reference's peak. "Graft" copies the reference's audio at each event.
+- **Refinements:** ducking lowers the source under an accent (5 ms attack, held for up to 300 ms, 80 ms release; the
+  deepest duck wins where accents overlap); panning is equal-power and turns a mono result into stereo; "local" tuning
+  runs YIN at the anchor; chance drops each accent with the given probability, decided by the seed.
+
+## Modal analysis and resynthesis (`modal.js`)
+
+- **Segment:** from 5 ms after the peak (skipping the contact transient) for up to 4 s.
+- **Frames:** Hann window as long as the decay allows (a power of two up to 8192 that fits three times), hop 1/8 of
+  it, zero-padded to twice the window for finer peak positions.
+- **Peaks:** local maxima of the first frame (dB) within 60 dB of the strongest peak and 15 dB above the spectral
+  median, at least 3 bins apart, the strongest 48 kept; frequency and level by parabolic interpolation.
+- **Decay:** each peak's level (max of three bins) is followed over the frames until it falls 50 dB or into the noise;
+  a least-squares line through the dB values gives the slope, and τ = 8.686 / −slope. The level at the strike is
+  extrapolated back from the first frame centre.
+- Verified on a signal with seven known damped partials: frequencies within 0.1 Hz, decay times and levels within a
+  few percent, no spurious modes (see `tests/modal.test.js`).
+- **Reshaping:** size scales all frequencies (and decay by 1/√ratio, smaller objects ring shorter); stretch raises the
+  frequency ratios to a power (stiffer or softer); tilt scales decay by (f/f₁)^tilt; morphing interpolates each mode's
+  decay geometrically towards the target material's loss model. The original attack (40 ms from the onset) can be
+  mixed back in, pitch-shifted with the size.
+- References: K. van den Doel and D. K. Pai, "Modal synthesis for vibrating objects," in *Audio Anecdotes*, 2003;
+  X. Serra and J. O. Smith, "Spectral modeling synthesis," Computer Music Journal 14(4), 1990.
 
 ## Slicing and loops (`edit.js`)
 

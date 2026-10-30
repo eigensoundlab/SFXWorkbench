@@ -10,10 +10,11 @@ import { renderDeck } from './deck.js';
 import { renderMix } from './panels/combine.js';
 import { updateSliceInfo } from './panels/slice.js';
 import { scheduleRender } from './output.js';
-import { refreshAccents } from './panels/accents.js';
+import { refreshAccents, renderRefOptions } from './panels/accents.js';
 
 export function metaShort(s) { return `${khz(s.sr)} kHz · ${s.isFloat ? '32f' : s.bits} · ${chLabel(s.ch.length)} · ${(D.len(s.ch) / s.sr).toFixed(2)} s`; }
 export function renderLibrary() {
+  renderRefOptions();
   $('#lib-count').textContent = S.sounds.length + (S.sounds.length === 1 ? ' sound' : ' sounds');
   $('#lib-list').replaceChildren(...S.sounds.map(s => h('li', { class: 'lib-item' + (s.id === S.selId ? ' is-sel' : '') },
     h('button', { class: 'icon-btn play', type: 'button', title: 'Play', 'aria-label': 'Play ' + s.name, onclick: () => play(s, 0, null, s.id === S.selId ? 'src' : 'lib') }, playIcon()),

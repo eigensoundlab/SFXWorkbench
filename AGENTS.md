@@ -94,6 +94,12 @@ with the mono source, the anchor sample and the structure analysis, so it can tu
 `src/config/accents.js` and list it in the `show` of the specs it uses.
 Recipe: add a list of partial slot params to `ACCENT_RECIPES`. The accent tests render every kind and recipe.
 
+**Resynth (modal resynthesis)**
+`measureModes()` in `src/dsp/modal.js` returns `{ modes: [{ f, tau, a }], f1, sr, attack }`. `resynthGen()` turns it
+into a body with `transformModes()` and renders it through `impactGen()` by passing the modes as `p._modes`
+(measured gains are kept as `gm`, so re-strikes only weight them by position). The measurement lives in
+`S.gMeasured`, not in the engine params, so rolling dice types keeps it.
+
 **Add a morph mode**
 Add the processor to `MORPH` in `src/dsp/morph.js` (`(A, B, sr, params) => channels`; A and B already share rate and
 channel count), and a matching entry with `desc` and `params` in `MIX` in `src/config/tools.js`.
@@ -118,4 +124,5 @@ settings; call `scheduleRender()` after any change that affects it. Every edit t
   one. Keep them separate so recordings are never resampled.
 - `src/app/folders.js` wraps real directory handles and uploaded file trees behind one small node interface (`list()`).
   Directory handles are stored in IndexedDB via `src/app/store.js`, never in localStorage.
+- `src/version.js` holds the version shown in the footer; bump it together with `package.json` (a test checks).
 - The STFT uses 75% overlap with Hann analysis and synthesis windows and normalises by the summed window power.

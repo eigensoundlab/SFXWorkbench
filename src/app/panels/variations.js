@@ -11,7 +11,7 @@ import { finish } from '../finish.js';
 import { ensureOut } from '../output.js';
 import { addSound, renderLibrary } from '../library.js';
 import { renderMix } from './combine.js';
-import { activeSlots, hasAccents } from './accents.js';
+import { activeSlots, hasAccents, accentReference } from './accents.js';
 import { saveSound, saveZip } from '../files.js';
 
 export function renderVarParams() {
@@ -33,7 +33,7 @@ export function generateVariations() {
     if (offMs > 0.5) { const k = Math.min(D.len(ch) - 1, Math.round(offMs * s.sr / 1000)); ch = ch.map(c => c.slice(k)); }
     if (rev) ch = ch.map(c => c.slice().reverse());
     const r = S.vp.chain && S.chainOn ? D.processChain({ sr: s.sr, ch }, S.chain) : { sr: s.sr, ch: D.copy(ch) };
-    if (S.vp.accents && hasAccents()) r.ch = D.renderAccents(r.ch, r.sr, activeSlots(s), { seed: S.vp.seed * 1000 + i, jitter: true }).ch;
+    if (S.vp.accents && hasAccents()) r.ch = D.renderAccents(r.ch, r.sr, activeSlots(s), { seed: S.vp.seed * 1000 + i, jitter: true, reference: accentReference(r.sr) }).ch;
     if (Math.abs(sf - 1) > 0.004) r.ch = D.timeStretch(r.ch, r.sr, sf, 'wsola', 30);
     if (Math.abs(st) > 0.005) r.ch = D.varispeed(r.ch, () => Math.pow(2, st / 12));
     let fc = 0;

@@ -312,3 +312,7 @@ body.is-drop::after {
 .gen-preview .acc-wave { height: 170px; }
 .acc-readout .chip b { font-weight: 500; color: var(--ink); }
 .acc-slot .fx-params .prm-bool > label.chk { font-size: 12.5px; }
+
+/* ---- 0.5: resynthesis, version ---- */
+.measure { display: flex; flex-direction: column; gap: 8px; }
+.modes-view { display: block; width: 100%; height: 96px; border: 1px solid var(--line); border-radius: var(--r); }
