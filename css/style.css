@@ -307,3 +307,8 @@ body.is-drop::after {
 .is-dir .dir-name { font-weight: 600; }
 .lib-head .seg-lg button { padding: 6px 10px; }
 .lib-head .count { white-space: nowrap; }
+
+/* ---- 0.4: accents ---- */
+.gen-preview .acc-wave { height: 170px; }
+.acc-readout .chip b { font-weight: 500; color: var(--ink); }
+.acc-slot .fx-params .prm-bool > label.chk { font-size: 12.5px; }

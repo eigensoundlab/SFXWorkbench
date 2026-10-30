@@ -20,8 +20,9 @@ import { rollGenQuiet, initGenerate } from './app/panels/generate.js';
 import { updateSliceInfo, initSlice } from './app/panels/slice.js';
 import { initRecorder, recorderBusy, toggleRecord } from './app/recorder.js';
 import { initFolders } from './app/folders.js';
+import { initAccents, refreshAccents, drawAcc } from './app/panels/accents.js';
 
-const TABS = ['fx', 'var', 'mix', 'gen', 'sl'];
+const TABS = ['fx', 'var', 'mix', 'acc', 'gen', 'sl'];
 
 function setTab(id) {
   S.tab = id;
@@ -30,6 +31,7 @@ function setTab(id) {
     $('#pane-' + t).hidden = t !== id;
   }
   if (id === 'gen') { if (!S.gOut) rollGenQuiet(); else drawGen(); }
+  if (id === 'acc') refreshAccents();
   drawSrc();
 }
 
@@ -55,8 +57,8 @@ function initShortcuts() {
 }
 
 function initRedraw() {
-  const redraw = () => { for (const id of ['#wave-src', '#wave-out', '#wave-gen']) $(id)._c = null; drawSrc(); drawOut(); drawGen(); };
-  new ResizeObserver(() => { drawSrc(); drawOut(); drawGen(); }).observe($('#wave-src'));
+  const redraw = () => { for (const id of ['#wave-src', '#wave-out', '#wave-gen', '#wave-acc']) $(id)._c = null; drawSrc(); drawOut(); drawGen(); drawAcc(); };
+  new ResizeObserver(() => { drawSrc(); drawOut(); drawGen(); drawAcc(); }).observe($('#wave-src'));
   try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw); } catch (e) { /* older browsers */ }
   new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(redraw);
@@ -94,7 +96,7 @@ function loadExamples() {
 
 function boot() {
   loadExamples();
-  initDeck(); initLibrary(); initRail(); initRecorder(); initFolders(); initEffects(); initVariations(); initCombine(); initGenerate(); initSlice();
+  initDeck(); initLibrary(); initRail(); initRecorder(); initFolders(); initAccents(); initEffects(); initVariations(); initCombine(); initGenerate(); initSlice();
   initShortcuts(); initRedraw();
   for (const t of TABS) $('#tab-' + t).onclick = () => setTab(t);
   $('#env-note').textContent = inViewer()

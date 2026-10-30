@@ -75,6 +75,15 @@ evaluated, only after `boot()`.
 groups and its dice types. `src/app/panels/generate.js` is generic: it builds the engine switch, dice buttons and
 parameter panels from that table and keeps separate parameters per engine in `S.gParams`.
 
+## Accents
+
+`src/dsp/accents.js` analyses the structure of a sound (`analyzeStructure`) and mixes accents into it
+(`renderAccents`). Anchors are resolved to sample positions from the analysis, each accent kind renders a mono grain
+from the slot params and a context (source, anchor, analysis), and grains are mixed at a level relative to the local
+loudness. Lead-in accents that start before 0 shift the whole sound by `lead` samples. The panel
+(`src/app/panels/accents.js`) builds on the sound with its effect chain but without finishing, so finishing still
+applies when the result is saved. Variations call `renderAccents` with `jitter: true` and a per-file seed.
+
 ## Saving
 
 `saveBytes()` in `src/app/files.js` downloads via a temporary link. When the page runs inside a Claude artifact

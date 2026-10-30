@@ -7,7 +7,8 @@ Read it before changing anything. Deeper detail lives in [docs/ARCHITECTURE.md](
 
 SFX Workbench is a static, client-side web app for designing game sound effects: record, edit, time-stretch, re-pitch,
 generate (synth, physical impacts, textures), vary, morph, slice and loop. It runs entirely in the browser. There is no
-backend, no account, no network use at runtime (apart from Google Fonts, which are optional). It is deployed to GitHub Pages and also shipped as one offline HTML file.
+backend, no account, no network use at runtime (apart from Google Fonts, which are optional). It is deployed to
+GitHub Pages and also shipped as one offline HTML file.
 
 ## Commands
 
@@ -32,7 +33,7 @@ src/dsp/              pure DSP, no DOM; `index.js` is the public API (imported a
 src/io/               WAV and ZIP encoding/decoding, also pure
 src/config/           data that drives the UI: effects, presets, tool and generator specs
 src/app/              UI modules: state, deck, library, output, files, drawing, audio, recorder, folders, store
-src/app/panels/       one module per tab: effects, variations, combine, generate, slice
+src/app/panels/       one module per tab: effects, variations, combine, accents, generate, slice
 tests/                node:test suites, including config consistency checks
 scripts/              build (esbuild) and dev server
 docs/                 architecture, DSP notes, roadmap
@@ -84,6 +85,14 @@ Engine: write a pure `(params, sampleRate) => Channels` function, export it from
 **Add a material or shape (Impact engine)**
 Add it to `MATERIALS` or `SHAPES` in `src/dsp/physical.js`. Menus are built from those tables automatically.
 Materials need `eta` (loss factor), `delta` (constant loss, 1/s), `noiseHz` and `grit` (0..1, contact noise share).
+
+**Add an accent kind or recipe**
+Kind: add a function to `ACCENT_KINDS` in `src/dsp/accents.js` returning `{ x, align }` (mono, peak 1; `align`
+'after' starts at the anchor, 'before' ends at it). It gets the slot params and a context `{ src, t, a, sr, R, seed }`
+with the mono source, the anchor sample and the structure analysis, so it can tune to `soundKey(a)`, use
+`autoMaterial(a)` or excite something with the sound at `t`. Add its name to `ACCENT_NAMES` in
+`src/config/accents.js` and list it in the `show` of the specs it uses.
+Recipe: add a list of partial slot params to `ACCENT_RECIPES`. The accent tests render every kind and recipe.
 
 **Add a morph mode**
 Add the processor to `MORPH` in `src/dsp/morph.js` (`(A, B, sr, params) => channels`; A and B already share rate and

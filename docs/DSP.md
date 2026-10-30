@@ -127,6 +127,27 @@ or glass.
   resonances at harmonics (shimmer), amplitude pulsing and crackle.
 - Stereo is two independently seeded renders mixed by the width control.
 
+## Structure analysis and accents (`accents.js`)
+
+- **Envelope:** RMS over 10 ms windows on 2.5 ms hops, in dB. The window is longer than one period of low tones, so a
+  buzzing motor does not look like a train of attacks.
+- **Landmarks:** onset (first point within 40 dB of the peak), peak (end of the attack), body end (12 dB below the
+  peak), tail end (last point within 50 dB of the peak).
+- **Transients:** points where the envelope rises more than 9 dB above its minimum over the previous 20 ms, at least
+  50 ms apart, moved back to the start of the rise.
+- **Pitch:** YIN (A. de Cheveigné and H. Kawahara, "YIN, a fundamental frequency estimator for speech and music,"
+  JASA 111(4), 2002) after the peak, 40-2000 Hz. A pitch is kept only if it is clearly periodic and the strongest
+  spectral resonance is one of its first six harmonics; inharmonic sounds such as metal otherwise fool it.
+- **Key** for tuning accents: the pitch, else the strongest resonance (tonal and resonant sounds), else a quarter of
+  the spectral centroid (noise). **Brightness** is the spectral centroid, **noisiness** the spectral flatness over
+  100 Hz-10 kHz. The automatic material is a simple map of brightness and noisiness (bright and tonal: glass, bright
+  and noisy: steel, down to dark and noisy: stone); it is a starting point, not a classifier.
+- **Placement:** an accent's grain starts at its anchor plus offset, or ends there for lead-ins (swell, whoosh). Its
+  level is relative to the source's local peak (+-10 ms) when "Follow loudness" is on, otherwise to the overall peak.
+  The mix is scaled down to -1 dBFS only if it would exceed that.
+- **Self-driven kinds** (ring, zap, slap, stutter, swell) take a window of the source at the anchor as their input,
+  so the accent reacts to what actually happens there.
+
 ## Slicing and loops (`edit.js`)
 
 - **Take detection:** envelope follower (1 ms attack, 15 ms release) against a threshold; regions closer than the minimum

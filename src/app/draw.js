@@ -81,6 +81,7 @@ export function drawWave(cv, snd, o) {
     g.fillRect(Math.round(o.sel.a / n * W), 0, 1.5, H); g.fillRect(Math.round(o.sel.b / n * W) - 1, 0, 1.5, H);
   }
   if (o.cursor > 0 && !o.sel) { g.fillStyle = T.muted; for (let y = 0; y < H; y += 6) g.fillRect(Math.round(o.cursor / n * W), y, 1, 3); }
+  if (o.overlay) o.overlay(g, W, H, n, T);
   if (o.playhead != null) { g.fillStyle = T.accent; g.fillRect(Math.round(o.playhead / n * W) - 1, 0, 2, H); }
 }
 export function drawSrc(playhead) {

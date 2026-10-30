@@ -16,6 +16,13 @@ Ideas ranked roughly by value for game sound work. Open an issue before starting
 
 ## Sound design
 
+- Accents, next steps: duck the source under an accent, per-accent pan and width, accents that follow a pitch glide,
+  accent placement learned from a reference sound (copy the accent structure of one sound onto another).
+- Modal resynthesis: measure the resonant modes of a recorded hit and turn it into an editable Impact object
+  (change material, size or strike position of a real recording).
+- Transient / tail split: export attack and tail as separate files so the engine can mix tails by environment.
+- Perspective set: render close, mid and distant versions of a sound (level, air absorption, early reflections).
+
 - Formant-preserving pitch shift for voices and creatures.
 - Phase-locked phase vocoder (Laroche–Dolson) for cleaner spectral stretch.
 - Transient-aware stretch: detect onsets and keep each attack unstretched, not only the first.

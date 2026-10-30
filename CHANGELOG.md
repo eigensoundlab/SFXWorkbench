@@ -5,6 +5,21 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-30
+
+### Added
+- Accents tab: context-aware accent generator. It analyses the selected sound's structure (onset, attack and peak,
+  body, tail, end, every transient, pitch or strongest resonance, brightness, noisiness) and adds up to four accents
+  at structural points: start, peak, every transient, tail, end, a position or the selection start, with an offset.
+  Twelve kinds: impact hit, resonant ring and dispersion zap driven by the sound itself, sub thump, reverse swell and
+  whoosh lead-ins, back slap, stutter, debris settle, shell drop, mechanical click, sparks. Accents can match the
+  sound's pitch (or a fifth or octave from it), pick a material from its brightness and follow its loudness.
+- 22 accent recipes for weapons, impacts, devices and sci-fi, UI and pickups.
+- Variations option "Add the accents from the Accents tab", with small random changes per file.
+
+### Changed
+- AGENTS.md line wrapping.
+
 ## [0.3.0] - 2026-10-26
 
 ### Added
@@ -48,6 +63,7 @@ First public version.
 - WAV import/export keeping sample rate, channels and bit depth; zip for multi-file saves.
 - Single-file offline build, tests, CI and GitHub Pages deployment.
 
-[Unreleased]: https://github.com/eigensoundlab/SFXWorkbench/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/eigensoundlab/SFXWorkbench/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/eigensoundlab/SFXWorkbench/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/eigensoundlab/SFXWorkbench/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/eigensoundlab/SFXWorkbench/releases/tag/v0.2.0

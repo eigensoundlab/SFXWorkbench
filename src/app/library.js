@@ -10,6 +10,7 @@ import { renderDeck } from './deck.js';
 import { renderMix } from './panels/combine.js';
 import { updateSliceInfo } from './panels/slice.js';
 import { scheduleRender } from './output.js';
+import { refreshAccents } from './panels/accents.js';
 
 export function metaShort(s) { return `${khz(s.sr)} kHz · ${s.isFloat ? '32f' : s.bits} · ${chLabel(s.ch.length)} · ${(D.len(s.ch) / s.sr).toFixed(2)} s`; }
 export function renderLibrary() {
@@ -29,7 +30,7 @@ export function addSound(s, opts = {}) {
 export function select(id) {
   stop(false);
   S.selId = id; S.sel = null; S.cursor = 0;
-  renderLibrary(); renderDeck(); renderMix(); updateSliceInfo(); scheduleRender();
+  renderLibrary(); renderDeck(); renderMix(); updateSliceInfo(); scheduleRender(); refreshAccents();
 }
 export function removeSound(id) {
   const i = S.sounds.findIndex(s => s.id === id); if (i < 0) return;

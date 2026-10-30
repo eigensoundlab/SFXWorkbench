@@ -11,6 +11,7 @@ export const VAR_SPEC = [
   { k: 'rev', l: 'Reverse chance', min: 0, max: 100, step: 1, u: '%', d: 0 },
   { k: 'seed', l: 'Seed', min: 1, max: 999, step: 1, u: '#', d: 1 },
   { k: 'chain', l: 'Run the effect chain on each variation', type: 'bool', d: true },
+  { k: 'accents', l: 'Add the accents from the Accents tab', type: 'bool', d: false },
 ];
 
 export const FIT = { k: 'fit', l: 'Stretch B to the length of A', type: 'bool', d: true };

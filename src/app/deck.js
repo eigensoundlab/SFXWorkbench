@@ -11,6 +11,7 @@ import { renderLibrary, addSound } from './library.js';
 import { renderMix } from './panels/combine.js';
 import { updateSliceInfo } from './panels/slice.js';
 import { saveSound } from './files.js';
+import { refreshAccents } from './panels/accents.js';
 
 export function renderDeck() {
   const s = cur();
@@ -85,7 +86,7 @@ export function undo() {
   const s = cur(); if (!s || !s.undo.length) return toast('Nothing to undo.');
   s.ch = s.undo.pop(); s.ver++; S.sel = null; S.cursor = 0; afterEdit(); toast('Undone');
 }
-export function afterEdit() { stop(false); renderDeck(); renderLibrary(); updateSliceInfo(); scheduleRender(); }
+export function afterEdit() { stop(false); renderDeck(); renderLibrary(); updateSliceInfo(); scheduleRender(); refreshAccents(); }
 export function playSource() { const s = cur(); if (!s) return; if (S.sel) play(s, S.sel.a, S.sel.b, 'src'); else play(s, S.cursor || 0, null, 'src'); }
 
 /** Wire the deck: waveform selection, transport, edit buttons, display mode, finishing and save controls. */

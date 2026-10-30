@@ -24,6 +24,10 @@ and open it in any modern browser.
 - **Compare:** press B while the output plays to switch effects on and off at the same position.
 - **Variations:** seeded random pitch, length, volume, tone, start offset and reverse, with a file-name pattern such as
   `{name}_var{nn}`. Play all, save all as one zip.
+- **Accents (context-aware):** analyses a sound's structure (attack, body, tail, transients, pitch, brightness) and
+  adds accents where they belong: a mechanism click before the shot, a sub under the peak, a back slap or debris after
+  the tail, a metal ring on every transient of a reload. Accents are tuned to the sound, choose a fitting material and
+  follow its loudness. 22 recipes; variations can include the accents, slightly different in each file.
 - **Combine and morph:** layer stack, spectral morph, cross-synthesis, convolution, envelope transfer, ring multiply and
   granular weave.
 - **Generate** with three engines, each with dice types to roll, mutate and refine:

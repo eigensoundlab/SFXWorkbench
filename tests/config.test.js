@@ -8,6 +8,7 @@ import { FXDEF } from '../src/config/effects.js';
 import { PRESETS } from '../src/config/presets.js';
 import { MIX, VAR_SPEC, LAYER_SPEC, SLICE_SPEC, LOOP_SPEC } from '../src/config/tools.js';
 import { ENGINES, engineSpecs } from '../src/config/generator.js';
+import { ACCENT_SPECS } from '../src/config/accents.js';
 import { defaults } from '../src/app/format.js';
 
 const ex = examples();
@@ -58,7 +59,7 @@ test('morph modes with params have processors; tool specs are valid', () => {
     assert.equal(typeof D.MORPH[k], 'function', `missing MORPH.${k}`);
     checkSpecs(k, m.params);
   }
-  for (const [n, s] of Object.entries({ VAR_SPEC, LAYER_SPEC, SLICE_SPEC, LOOP_SPEC })) checkSpecs(n, s);
+  for (const [n, s] of Object.entries({ VAR_SPEC, LAYER_SPEC, SLICE_SPEC, LOOP_SPEC, ACCENT_SPECS })) checkSpecs(n, s);
 });
 
 test('every generator engine renders its defaults and every dice type', () => {

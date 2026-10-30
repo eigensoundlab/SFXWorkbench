@@ -159,6 +159,7 @@
       <button class="tab" role="tab" id="tab-fx" aria-selected="true" aria-controls="pane-fx" type="button">Effects</button>
       <button class="tab" role="tab" id="tab-var" aria-selected="false" aria-controls="pane-var" type="button">Variations</button>
       <button class="tab" role="tab" id="tab-mix" aria-selected="false" aria-controls="pane-mix" type="button">Combine &amp; morph</button>
+      <button class="tab" role="tab" id="tab-acc" aria-selected="false" aria-controls="pane-acc" type="button">Accents</button>
       <button class="tab" role="tab" id="tab-gen" aria-selected="false" aria-controls="pane-gen" type="button">Generate</button>
       <button class="tab" role="tab" id="tab-sl" aria-selected="false" aria-controls="pane-sl" type="button">Slice &amp; loop</button>
     </div>
@@ -204,6 +205,27 @@
         <button class="btn primary" id="btn-render-mix" type="button">Render to library</button>
         <span id="mix-status" class="hint"></span>
       </div>
+    </section>
+
+    <section class="pane" id="pane-acc" role="tabpanel" aria-labelledby="tab-acc" hidden>
+      <p class="mode-desc">Reads the structure of the selected sound (attack, body, tail, transients, pitch and brightness) and adds accents where they belong: a click before the shot, a sub under the peak, a slap or debris after the tail, a ring on every transient. Accents are tuned to the sound and follow its loudness.</p>
+      <div class="pane-bar">
+        <label>Recipe <select id="acc-recipe"></select></label>
+        <label>Build on <select id="acc-src"><option value="out">Sound with effects</option><option value="src">Source only</option></select></label>
+        <button class="btn" id="acc-mutate" type="button" title="Nudge every accent setting a little and change the seed">Mutate</button>
+        <button class="btn" id="acc-clear" type="button">Clear</button>
+      </div>
+      <div class="gen-preview">
+        <canvas id="wave-acc" class="wave acc-wave" aria-label="Result with the sound's structure and the accents marked"></canvas>
+        <div id="acc-readout" class="chips acc-readout"></div>
+        <div class="pane-bar">
+          <button class="btn" id="acc-play" type="button">▶ Play</button>
+          <button class="btn primary" id="acc-add" type="button">Add result to library</button>
+          <label class="chk"><input type="checkbox" id="acc-auto" checked><span>Play on change</span></label>
+          <span class="hint">Variations can add these accents too, slightly different in every file.</span>
+        </div>
+      </div>
+      <div id="acc-slots" class="chain"></div>
     </section>
 
     <section class="pane" id="pane-gen" role="tabpanel" aria-labelledby="tab-gen" hidden>
