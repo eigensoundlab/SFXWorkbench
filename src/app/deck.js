@@ -43,6 +43,13 @@ export function updateExportOpts() {
   fmt.value = S.exp.fmt; sr.value = S.exp.sr;
 }
 
+/** Display of the source and output lanes: 'wave', 'spec' or 'ph' (Playhead strip, while Playhead analysis is on). */
+export function setView(v) {
+  S.view = v;
+  for (const k of ['wave', 'spec', 'ph']) $('#view-' + k).setAttribute('aria-pressed', v === k ? 'true' : 'false');
+  drawSrc(); drawOut();
+}
+
 /* ---------- editing ---------- */
 export function edit(op) {
   if (op === 'undo') return undo();
@@ -114,14 +121,9 @@ export function initDeck() {
   $('#btn-play-src').onclick = playSource;
   $('#btn-stop').onclick = () => stop();
   $('#chain-on').onchange = e => { if (e.target.checked !== S.chainOn) toggleCompare(); };
-  const setView = v => {
-    S.view = v;
-    $('#view-wave').setAttribute('aria-pressed', v === 'wave' ? 'true' : 'false');
-    $('#view-spec').setAttribute('aria-pressed', v === 'spec' ? 'true' : 'false');
-    drawSrc(); drawOut();
-  };
   $('#view-wave').onclick = () => setView('wave');
   $('#view-spec').onclick = () => setView('spec');
+  $('#view-ph').onclick = () => setView('ph');
   document.querySelector('.ops').addEventListener('click', e => { const b = e.target.closest('[data-op]'); if (b) edit(b.dataset.op); });
   $('#snd-name').addEventListener('change', e => { const s = cur(); if (!s) return; s.name = e.target.value.trim() || s.name; e.target.value = s.name; renderLibrary(); renderMix(); });
 

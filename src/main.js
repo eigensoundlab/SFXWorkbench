@@ -5,7 +5,7 @@
  */
 import * as D from './dsp/index.js';
 import { VERSION } from './version.js';
-import { $ } from './app/dom.js';
+import { $, toast } from './app/dom.js';
 import { S, newSound, makeFx } from './app/state.js';
 import { PRESETS } from './config/presets.js';
 import { playing, stop } from './app/audio.js';
@@ -13,15 +13,16 @@ import { drawSrc, drawOut, drawGen } from './app/draw.js';
 import { scheduleRender, playOutput, toggleCompare } from './app/output.js';
 import { inViewer, downloadsCap } from './app/files.js';
 import { renderLibrary, initLibrary } from './app/library.js';
-import { renderDeck, initDeck, edit, undo, playSource, updateSelInfo } from './app/deck.js';
+import { renderDeck, initDeck, edit, undo, playSource, updateSelInfo, setView } from './app/deck.js';
 import { renderChain, initEffects } from './app/panels/effects.js';
 import { renderVarParams, renderVars, initVariations } from './app/panels/variations.js';
 import { renderMix, initCombine } from './app/panels/combine.js';
-import { rollGenQuiet, initGenerate, drawModes } from './app/panels/generate.js';
+import { rollGenQuiet, initGenerate, drawModes, syncGenPlayhead, showGen } from './app/panels/generate.js';
 import { updateSliceInfo, initSlice } from './app/panels/slice.js';
 import { initRecorder, recorderBusy, toggleRecord } from './app/recorder.js';
 import { initFolders } from './app/folders.js';
 import { initAccents, refreshAccents, drawAcc } from './app/panels/accents.js';
+import { PH, setPlayhead } from './app/playhead.js';
 
 const TABS = ['fx', 'var', 'mix', 'acc', 'gen', 'sl'];
 
@@ -31,7 +32,7 @@ function setTab(id) {
     $('#tab-' + t).setAttribute('aria-selected', t === id ? 'true' : 'false');
     $('#pane-' + t).hidden = t !== id;
   }
-  if (id === 'gen') { if (!S.gOut) rollGenQuiet(); else drawGen(); }
+  if (id === 'gen') { if (!S.gOut) rollGenQuiet(); else { drawGen(); showGen(); } }
   if (id === 'acc') refreshAccents();
   drawSrc();
 }
@@ -95,6 +96,23 @@ function loadExamples() {
   ];
 }
 
+/** Show or hide everything that needs Playhead analysis; with it off the app works exactly as without Playhead. */
+function syncPlayhead() {
+  $('#ph-on').checked = PH.on;
+  $('#view-ph').hidden = !PH.on;
+  if (!PH.on && S.view === 'ph') setView('wave');
+  $('#acc-det-row').hidden = !PH.on;
+  renderMix(); refreshAccents(); syncGenPlayhead(); drawSrc(); drawOut();
+}
+function initPlayhead() {
+  $('#ph-version').textContent = PH.version;
+  $('#ph-on').onchange = e => {
+    setPlayhead(e.target.checked); syncPlayhead();
+    toast(PH.on ? 'Playhead analysis on: a Playhead view, events in Accents, curves in Reaction and in morphs, and a check of generated sounds.' : 'Playhead analysis off.');
+  };
+  syncPlayhead();
+}
+
 function boot() {
   $('#app-version').textContent = VERSION;
   loadExamples();
@@ -106,6 +124,7 @@ function boot() {
     : 'Everything runs in this browser tab; no audio is uploaded. Single files save directly as .wav; sets save as one .zip.';
   if (inViewer()) downloadsCap();
   renderLibrary(); renderDeck(); renderChain(); renderVarParams(); renderVars(); renderMix(); updateSliceInfo();
+  initPlayhead();
   scheduleRender();
 }
 

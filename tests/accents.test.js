@@ -105,3 +105,17 @@ test('chance drops some accents and the seed decides which', () => {
   assert.ok(counts.some(c => c < 3) && counts.some(c => c > 0), `counts ${counts}`);
   assert.equal(D.renderAccents(src, SR, sl, { seed: 3 }).marks.length, D.renderAccents(src, SR, sl, { seed: 3 }).marks.length);
 });
+
+test('events from another detector (such as Playhead) replace the built-in transients for the anchors', () => {
+  const src = threeHits(), a = D.analyzeStructure(src, SR), at = [0.2, 0.7, 1.1].map(t => Math.round(t * SR));
+  const events = at.map(t => ({ at: t, strength: -6 })).concat({ at: -5, strength: 0 }, { at: 10 * SR, strength: 0 });
+  const r = D.renderAccents(src, SR, [slot({ kind: 'sub', anchor: 'each', level: -12 })], { analysis: a, events });
+  assert.deepEqual(r.marks.map(m => m.anchor), at, 'out-of-range events are dropped');
+  assert.deepEqual(r.analysis.transients.map(t => t.at), at);
+  assert.deepEqual(a.transients.map(t => Math.round(t.at / SR * 10) / 10), [0.1, 0.5, 0.9], 'the given analysis is not changed');
+  const target = examples().gunshot, ref = threeHits();
+  const refEvents = [0.1, 0.4, 0.8].map(t => ({ at: Math.round(t * SR), strength: -3 }));
+  const tr = D.renderAccents(target, SR, [slot({ kind: 'click', anchor: 'ref', fit: false, level: 0 })], { reference: ref, refEvents });
+  const ta = D.analyzeStructure(target, SR), ra = D.analyzeStructure(ref, SR);
+  assert.deepEqual(tr.marks.map(m => m.anchor - tr.lead), refEvents.filter(e => Math.abs(e.at - ra.peakAt) > 0.02 * SR && Math.abs(e.at - ra.onset) > 0.02 * SR).map(e => ta.peakAt + e.at - ra.peakAt));
+});

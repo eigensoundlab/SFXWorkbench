@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-/** Waveform and spectrogram drawing. Each canvas caches its rendered image keyed by sound version, size and theme colors. */
+/**
+ * Waveform, spectrogram and Playhead strip drawing. Each canvas caches its rendered image keyed by sound version, size,
+ * view and theme colors.
+ */
 import * as D from '../dsp/index.js';
 import { $ } from './dom.js';
 import { S, cur } from './state.js';
+import { PH, phDoc, phStatus, drawPhStrip } from './playhead.js';
 
 export function tokens() {
   const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
@@ -58,12 +62,19 @@ export function drawWave(cv, snd, o) {
   g.fillStyle = T.well; g.fillRect(0, 0, W, H);
   const n = snd ? D.len(snd.ch) : 0;
   if (!n) { g.fillStyle = T.muted; g.font = '12px "IBM Plex Mono", monospace'; g.fillText(o.empty || 'No audio', 12, H / 2 + 4); return; }
-  const spec = S.view === 'spec' && !o.waveOnly;
-  const key = [o.key, pw, ph, T.wave, T.out, T.line, T.accent, spec].join('|');
+  const view = o.waveOnly || (S.view === 'ph' && !PH.on) ? 'wave' : S.view;
+  const doc = view === 'ph' ? phDoc(o.key, snd, o.slot, o.redraw) : null;
+  const key = [o.key, pw, ph, T.wave, T.out, T.line, T.accent, T.danger, view, doc ? 'doc' : ''].join('|');
   if (!cv._c || cv._c.key !== key) {
     const off = document.createElement('canvas'); off.width = pw; off.height = ph;
-    if (spec) drawSpec(off, snd, T);
-    else { const og = off.getContext('2d'); og.setTransform(dpr, 0, 0, dpr, 0, 0); drawPeaks(og, snd.ch, W, H, o.out ? T.out : T.wave, T.line, T.danger); }
+    if (view === 'spec') drawSpec(off, snd, T);
+    else {
+      const og = off.getContext('2d'); og.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const wc = o.out ? T.out : T.wave, full = hexRgb(wc), faint = hexRgb(T.well).map((v, i) => Math.round(v + (full[i] - v) * 0.3));
+      // calm passages faint, harsh ones in the full waveform colour (red stays reserved for clipping)
+      if (doc) drawPhStrip(og, doc, W, H, { wave: wc, waveLow: faint, waveHigh: full, line: T.accent, tick: T.ink, text: T.ink, rule: T.muted });
+      else drawPeaks(og, snd.ch, W, H, wc, T.line, T.danger);
+    }
     cv._c = { key, off };
   }
   g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(cv._c.off, 0, 0); g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -81,19 +92,36 @@ export function drawWave(cv, snd, o) {
     g.fillRect(Math.round(o.sel.a / n * W), 0, 1.5, H); g.fillRect(Math.round(o.sel.b / n * W) - 1, 0, 1.5, H);
   }
   if (o.cursor > 0 && !o.sel) { g.fillStyle = T.muted; for (let y = 0; y < H; y += 6) g.fillRect(Math.round(o.cursor / n * W), y, 1, 3); }
+  if (view === 'ph') {
+    const st = doc ? '' : phStatus(o.key), note = doc ? (W > 420 ? 'Playhead: activity line, faint calm to strong harsh, events marked below' : 'Playhead')
+      : st === 'error' ? 'Playhead could not analyse this sound' : 'Playhead is analysing…';
+    g.font = '10px "IBM Plex Mono", monospace'; g.fillStyle = T.muted; g.textAlign = 'right'; g.fillText(note, W - 6, 12); g.textAlign = 'left';
+  }
   if (o.overlay) o.overlay(g, W, H, n, T);
   if (o.playhead != null) { g.fillStyle = T.accent; g.fillRect(Math.round(o.playhead / n * W) - 1, 0, 2, H); }
 }
 export function drawSrc(playhead) {
   const s = cur();
   const regions = S.tab === 'sl' && S.slices && s && S.slices.key === s.id + ':' + s.ver ? S.slices.list : null;
-  drawWave($('#wave-src'), s, { key: s ? 's' + s.id + ':' + s.ver : '', sel: S.sel, cursor: S.cursor, playhead, regions, empty: 'Import a sound or pick one from the library' });
+  drawWave($('#wave-src'), s, { key: s ? 's' + s.id + ':' + s.ver : '', slot: 'src', redraw: redrawSrc, sel: S.sel, cursor: S.cursor, playhead, regions, empty: 'Import a sound or pick one from the library' });
 }
+const redrawSrc = () => drawSrc(), redrawOut = () => drawOut();
 export function drawOut(playhead) {
   const o = S.out;
-  drawWave($('#wave-out'), o && !o.err ? o : null, { key: o ? 'o' + o.key : '', out: true, playhead, empty: o && o.err ? 'Effect error: ' + o.err : 'No output' });
+  drawWave($('#wave-out'), o && !o.err ? o : null, { key: o ? 'o' + o.key : '', slot: 'out', redraw: redrawOut, out: true, playhead, empty: o && o.err ? 'Effect error: ' + o.err : 'No output' });
 }
 export function drawGen(playhead) {
   if (S.tab !== 'gen') return;
-  drawWave($('#wave-gen'), S.gOut, { key: 'g' + S.gVer, out: true, playhead, waveOnly: true, empty: 'Pick a sound type above' });
+  const o = S.gOut, dv = o && o.drive;
+  drawWave($('#wave-gen'), o, { key: 'g' + S.gVer, out: true, playhead, waveOnly: true, empty: 'Pick a sound type above', overlay: dv ? (g, W, H, n, T) => {
+    // Reaction engine: the action's drive (thin) and the medium's response after delay, threshold and settling (thick).
+    const dur = n / o.sr, line = (vals, rate, color, width) => {
+      g.strokeStyle = color; g.lineWidth = width; g.beginPath();
+      for (let i = 0; i < vals.length; i++) { const x = i / rate / dur * W, y = H - 3 - vals[i] * (H - 22); if (i) g.lineTo(x, y); else g.moveTo(x, y); }
+      g.stroke();
+    };
+    line(dv.values, dv.rate, T.muted, 1); line(dv.ctl, dv.ctlRate, T.accent, 2);
+    g.font = '10px "IBM Plex Mono", monospace'; g.fillStyle = T.muted;
+    g.fillText(`thin: action, ${dv.label} · thick: response`, 6, 12);
+  } : null });
 }

@@ -32,6 +32,7 @@ src/main.js           entry: boot, tabs, keyboard shortcuts, theme redraw
 src/dsp/              pure DSP, no DOM; `index.js` is the public API (imported as `D`)
 src/io/               WAV and ZIP encoding/decoding, also pure
 src/config/           data that drives the UI: effects, presets, tool and generator specs
+src/vendor/           copied-in builds (Playhead analysis), used by src/app only; not linted, see its README
 src/app/              UI modules: state, deck, library, output, files, drawing, audio, recorder, folders, store
 src/app/panels/       one module per tab: effects, variations, combine, accents, generate, slice
 tests/                node:test suites, including config consistency checks
@@ -48,6 +49,7 @@ docs/                 architecture, DSP notes, roadmap
 3. **Quality is the product.** Never change a sound's sample rate, channel count or bit depth unless the user chose it
    (Finishing and Format controls). Unprocessed audio must round-trip bit-exactly; there is a test for it.
 4. **No runtime dependencies.** Do not add npm packages to the app. Dev dependencies need a clear reason.
+   `src/vendor/playhead-core.mjs` is a copied-in build of the author's Playhead library, not a package.
 5. **Config over code.** Effects, presets, generator types and tool parameters are data in `src/config/`. The UI builds
    controls from parameter specs, so most features need no UI code at all.
 6. **Every change has a test.** New DSP gets a unit test in `tests/`. `tests/config.test.js` must keep passing; it checks
@@ -99,6 +101,18 @@ Recipe: add a list of partial slot params to `ACCENT_RECIPES`. The accent tests 
 into a body with `transformModes()` and renders it through `impactGen()` by passing the modes as `p._modes`
 (measured gains are kept as `gm`, so re-strikes only weight them by position). The measurement lives in
 `S.gMeasured`, not in the engine params, so rolling dice types keeps it.
+
+**Reaction engine**
+`reactionGen()` in `src/dsp/reaction.js` renders a texture whose event rate, level and brightness follow a drive curve
+(`driveCurve` 0..1 at `driveRate` Hz) after `lag`, above `thresh`, settling over `inertia`. The panel builds the drive
+from the action (`S.gDrive`): `levelCurve()` or a Playhead curve via `normalizeCurve()`. New media: add the kind to
+`MEDIUM_KINDS` and any texture keys it needs to `MEDIUM` (defaults) or to `REACTION_GROUPS` (exposed).
+
+**Playhead (optional analysis)**
+Everything goes through `src/app/playhead.js` (`PH.on`, `phDoc`, `phDocAsync`, `phEvents`, `phCurve`). Keep it optional:
+with `PH.on` false nothing may be analysed and no tool may behave differently. Pass Playhead results to the DSP as plain
+data (events, 0..1 curves); never import the vendor module from `src/dsp`. Select options whose value starts with `ph-`
+are hidden while Playhead is off (see `renderMix`).
 
 **Add a morph mode**
 Add the processor to `MORPH` in `src/dsp/morph.js` (`(A, B, sr, params) => channels`; A and B already share rate and

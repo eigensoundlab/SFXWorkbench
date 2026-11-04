@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Generate tab: three engines (Synth, Impact, Texture) defined in src/config/generator.js.
+ * Generate tab: the engines (Synth, Impact, Resynth, Texture, Reaction) defined in src/config/generator.js.
  * Each engine keeps its own parameters and last rolled type, so switching engines does not lose work.
+ * Reaction follows an action (a library sound) through its level or, with Playhead analysis on, a Playhead curve.
+ * With Playhead on, every generated sound is also measured by Playhead (the check chips under the preview).
  */
 import * as D from '../../dsp/index.js';
 import { $, h, toast } from '../dom.js';
@@ -14,6 +16,8 @@ import { play } from '../audio.js';
 import { drawGen } from '../draw.js';
 import { addSound } from '../library.js';
 import { renderMix } from './combine.js';
+import { MATERIALS } from '../../dsp/physical.js';
+import { PH, PH_CURVES, phDoc, phCurve, phSummary } from '../playhead.js';
 
 const SR = 48000;
 let genTimer = 0;
@@ -85,16 +89,83 @@ export function renderGenParams() {
   grid.replaceChildren(...engine().groups.map(([title, specs]) => h('div', { class: 'panel gen-group' }, h('h2', { text: title }), specs.map(sp => paramRow(sp, p, onChange, `gen-${S.gEngine}`)))));
   syncWhen(grid, p);
 }
+/* ---------- Reaction: the action that drives the medium ---------- */
+
+/** Take the selected library sound as the action for the Reaction engine. quiet: no toast when nothing is selected. */
+export function takeDriver(quiet = false) {
+  const s = cur();
+  if (!s) { if (!quiet) toast('Select a sound in the library first: the action, such as a whoosh or a footstep.'); return false; }
+  S.gDrive = { id: s.id, ver: s.ver, name: s.name, sr: s.sr, ch: s.ch, ch48: s.sr === SR ? s.ch : D.resample(s.ch, s.sr, SR), src: S.gDrive ? S.gDrive.src : 'level', level: null };
+  renderDrive();
+  return true;
+}
+function renderDrive() {
+  const box = $('#gen-drive');
+  box.hidden = !engine().drive;
+  if (box.hidden) return;
+  const d = S.gDrive, sel = $('#gen-drive-src');
+  if (d && !PH.on && d.src !== 'level') d.src = 'level';
+  sel.replaceChildren(h('option', { value: 'level', text: 'Level (built-in envelope)' }),
+    ...(PH.on ? Object.entries(PH_CURVES).map(([k, l]) => h('option', { value: 'ph-' + k, text: 'Playhead ' + l })) : []));
+  sel.value = d ? d.src : 'level';
+  sel.disabled = !d;
+  $('#gen-drive-info').textContent = d ? `Action: ${d.name} (${fmtDur(D.len(d.ch) / d.sr)} s).` + (PH.on ? '' : ' Turn on Playhead analysis to follow its curves instead of its level.')
+    : 'Select the action in the library (try whoosh or footstep) and press the button. Until then a demo pass is used.';
+}
+const driveReady = () => { if (!engine().drive) return; genRender(); if (S.gOut && $('#gen-auto').checked) play(S.gOut, 0, null, 'gen'); };
+/** The drive for reactionGen: { values, rate, ch, label }, { wait: true } while Playhead analyses, or null for the demo pass. */
+function driveInput() {
+  const d = S.gDrive;
+  if (!d) return null;
+  if (!d.level) { const l = D.levelCurve(d.ch, d.sr, 100); d.level = { values: D.normalizeCurve(l.values), rate: l.rate, ch: d.ch48, label: 'level' }; }
+  if (d.src === 'level' || !PH.on) return d.level;
+  const doc = phDoc(`drv:${d.id}:${d.ver}`, { sr: d.sr, ch: d.ch }, 'drv', driveReady), name = d.src.slice(3), c = phCurve(doc, name);
+  if (!doc) return { wait: true };
+  return c ? { ...c, ch: d.ch48, label: 'Playhead ' + PH_CURVES[name] } : d.level;
+}
+
 export function genRender() {
+  const e = engine();
+  let p = params(), drive = null;
+  if (e.measure) p = { ...p, measured: S.gMeasured };
+  if (e.drive) {
+    drive = driveInput();
+    if (drive && drive.wait) { $('#gen-info').textContent = 'Playhead is analysing the action…'; return; }
+    if (drive) p = { ...p, driveCurve: drive.values, driveRate: drive.rate, actionCh: drive.ch };
+  }
   try {
-    const p = engine().measure ? { ...params(), measured: S.gMeasured } : params();
-    S.gOut = { sr: SR, ch: D[engine().render](p, SR) };
-  } catch (e) {
-    console.error(e); S.gOut = null; toast('Could not render this sound: ' + e.message, 'err'); return;
+    S.gOut = { sr: SR, ch: D[e.render](p, SR) };
+  } catch (err) {
+    console.error(err); S.gOut = null; toast('Could not render this sound: ' + err.message, 'err'); return;
+  }
+  if (drive) {
+    // what the medium followed, for the preview: the drive and the response after delay, threshold and settling
+    const n = Math.ceil(D.len(S.gOut.ch) / SR * 200);
+    S.gOut.drive = { values: drive.values, rate: drive.rate, ctl: D.reactionControl(drive.values, drive.rate, p, 200, n), ctlRate: 200, label: drive.label };
   }
   S.gVer++;
   $('#gen-info').textContent = `${fmtDur(D.len(S.gOut.ch) / SR)} s · 48 kHz · 24-bit ${chLabel(S.gOut.ch.length)}`;
-  drawGen();
+  drawGen(); genCheck();
+}
+
+/* ---------- Playhead check of the generated sound ---------- */
+
+const checkReady = () => genCheck();
+/** Measure the generated sound with Playhead and show the result next to what the engine should produce. */
+export function genCheck() {
+  const box = $('#gen-ph');
+  box.hidden = !PH.on || !S.gOut;
+  if (box.hidden) return;
+  const doc = phDoc('gen:' + S.gVer, S.gOut, 'gen', checkReady);
+  const chip = (label, value, title) => h('span', { class: 'chip', title }, h('b', { text: label + ' ' }), value);
+  if (!doc) { box.replaceChildren(chip('Playhead check', 'measuring…')); return; }
+  const chips = phSummary(doc).map(([l, v, t]) => chip(l, v, t)), p = params();
+  if (S.gEngine === 'impact' && MATERIALS[p.material] && p.cause === 'hit') {
+    // Prediction from the engine's damping law tau = ring / (pi f eta + delta): tau_d = f tau -> ring / (pi eta) at high f.
+    chips.push(chip('Expected for ' + MATERIALS[p.material].name.toLowerCase(), `log τd ≈ ${Math.log10(p.ring / (Math.PI * MATERIALS[p.material].eta)).toFixed(2)}`,
+      'From the engine\'s damping law. Playhead measures slightly lower when the constant loss matters (low modes, short sounds).'));
+  }
+  box.replaceChildren(chip('Playhead check', ''), ...chips);
 }
 export function genChanged() {
   clearTimeout(genTimer);
@@ -124,7 +195,8 @@ export function mutateGen() {
 function setEngine(k) {
   S.gEngine = k;
   if (engine().measure && !S.gMeasured) measureSelected(true);
-  renderEngines(); renderGenTypes(); renderGenParams(); renderMeasure();
+  if (engine().drive && !S.gDrive) takeDriver(true);
+  renderEngines(); renderGenTypes(); renderGenParams(); renderMeasure(); renderDrive();
   if (!S.gTypes[k]) rollGen(Object.keys(engine().types)[0]); else genRender();
 }
 /** First visit to the tab: render the Synth laser without auto-playing. */
@@ -139,12 +211,26 @@ function addGenerated() {
   return addSound(newSound(`${base}_${String(S.gCount[base]).padStart(2, '0')}`, SR, D.copy(S.gOut.ch), 24, false, 'generated'));
 }
 
+/** Called when Playhead analysis is turned on or off; the tab catches up when it opens (showGen). */
+export function syncGenPlayhead() {
+  if (S.tab === 'gen') showGen();
+}
+/** The tab opens or Playhead was switched: update the action box and the check, and re-render if the drive changed. */
+export function showGen() {
+  const before = S.gDrive && S.gDrive.src;
+  renderDrive();
+  const followedPh = S.gOut && S.gOut.drive && S.gOut.drive.label.startsWith('Playhead');
+  if (engine().drive && S.gOut && ((S.gDrive && S.gDrive.src !== before) || (followedPh && !PH.on))) genRender(); else genCheck();
+}
+
 /** Wire the generator buttons. */
 export function initGenerate() {
   $('#gen-play').onclick = () => { if (!S.gOut) genRender(); if (S.gOut) play(S.gOut, 0, null, 'gen'); };
   $('#gen-mutate').onclick = mutateGen;
   $('#gen-measure-btn').onclick = () => { if (measureSelected()) { genRender(); if (S.gOut) play(S.gOut, 0, null, 'gen'); toast('Measured. Pick a type or change the settings to reshape it.'); } };
   $('#gen-add').onclick = () => { if (addGenerated()) toast('Added to the library. Select it there to apply effects or make variations.'); };
+  $('#gen-drive-btn').onclick = () => { if (takeDriver()) { genRender(); if (S.gOut) play(S.gOut, 0, null, 'gen'); } };
+  $('#gen-drive-src').onchange = e => { if (S.gDrive) { S.gDrive.src = e.target.value; genChanged(); } };
   $('#gen-layer').onclick = () => {
     const s = addGenerated(); if (!s) return;
     const slot = S.layers.find(l => !l.src || !S.sounds.some(x => x.id === l.src)) || S.layers[S.layers.length - 1];

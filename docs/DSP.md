@@ -50,6 +50,10 @@ block. Reference check in tests: a 997 Hz sine at −20 dBFS reads −23.0 LUFS 
 - **Ring multiply:** A × B, peak-matched.
 - **Granular weave:** Hann-windowed grains from A or B chosen by a probability that ramps over time, with position,
   pitch and reverse scatter; seeded for repeatability.
+- **Amount over time** (spectral morph, granular weave): `morphAmount()` replaces the even ramp u (0..1 through the
+  result) by a curve of A read at the frame's time, `start + (end − start) × curve`, 0 after A ends. The app passes A's
+  level (`levelCurve`, 10 ms RMS, −50..0 dB re the loudest window) or a Playhead curve, both mapped to 0..1 by their
+  5th..95th percentile (`normalizeCurve`).
 
 ## Effects (`effects.js`)
 
@@ -154,6 +158,10 @@ or glass.
   deepest duck wins where accents overlap); panning is equal-power and turns a mono result into stereo; "local" tuning
   runs YIN at the anchor; chance drops each accent with the given probability, decided by the seed.
 
+Accent anchors can come from another detector: `renderAccents(..., { events, refEvents })` replaces the transient list
+of the sound or the reference with `[{ at (sample), strength (dB re peak) }]`. The app passes Playhead's events when
+"Events from" is set to Playhead; everything else (onset, peak, body, tail, pitch) still comes from `analyzeStructure`.
+
 ## Modal analysis and resynthesis (`modal.js`)
 
 - **Segment:** from 5 ms after the peak (skipping the contact transient) for up to 4 s.
@@ -172,6 +180,20 @@ or glass.
   mixed back in, pitch-shifted with the size.
 - References: K. van den Doel and D. K. Pai, "Modal synthesis for vibrating objects," in *Audio Anecdotes*, 2003;
   X. Serra and J. O. Smith, "Spectral modeling synthesis," Computer Music Journal 14(4), 1990.
+
+## Reaction (`reaction.js`)
+
+- An action (a drive curve d(t) in 0..1) excites a medium. The control signal is c(t) = follower(max(0, (d(t − lag) −
+  θ) / (1 − θ))) with a 10 ms attack and a release time constant set by "Settles in" (the medium's inertia).
+- The medium is a texture (`textureGen`) whose Poisson event rate follows 1 − depth + depth·c(t) (`rateEnv`); the
+  same factor scales its level, and a one-pole low-pass opens from 18 kHz × 2^(−6·b) to 18 kHz as c rises
+  (b = "Brightening"), so harder pushes are denser, louder and brighter.
+- Continuous media (air, force field) follow through level and brightness only.
+- The result lasts the drive plus 3 time constants and the delay (at most 20 s); the action can be mixed in at a
+  share of the medium's peak; normalised to −1 dBFS.
+- The idea follows the excitation–resonance (cause–effect) view of everyday sounds: W. W. Gaver, "What in the world do
+  we hear? An ecological approach to auditory event perception," Ecological Psychology 5(1), 1993; P. R. Cook,
+  *Real Sound Synthesis for Interactive Applications*, A K Peters, 2002 (PhISEM).
 
 ## Slicing and loops (`edit.js`)
 

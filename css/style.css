@@ -219,6 +219,7 @@ body.is-drop::after {
   .layer .src-cell { grid-column: 2; }
   .layer > :not(.layer-idx) { grid-column: 2; }
   .export-btns { margin-left: 0; }
+  #gen-engines button { padding: 7px 9px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
@@ -259,6 +260,7 @@ body.is-drop::after {
 
 /* ---- 0.3: generator engines, recorder, folders ---- */
 .seg-lg button { padding: 7px 14px; font: 600 12px/1.2 var(--f-display); letter-spacing: .08em; text-transform: uppercase; }
+#gen-engines { flex-wrap: wrap; max-width: 100%; }
 .lib-head { align-items: center; }
 .rail-view { display: flex; flex-direction: column; gap: 10px; min-height: 0; flex: 1 1 auto; }
 #rail-lib-view { overflow: hidden; }

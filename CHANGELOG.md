@@ -5,6 +5,37 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-04
+
+### Added
+- Optional Playhead analysis ([Playhead](https://github.com/eigensoundlab/playhead), vendored in `src/vendor/`). A
+  "Playhead analysis" switch next to the Display buttons turns it on; it is off by default and remembered in the
+  browser. While it is off nothing is analysed and no tool changes, so every result can be compared with and without
+  it (same settings, same seed). When on:
+  - **Playhead view** for the source and output lanes: the waveform faint where the sound is calm and strong where it
+    is harsh, Playhead's activity curve and its events. Source and output side by side show what the chain changed.
+  - **Accents:** "Events from" switches the "Each transient" and "Reference rhythm" anchors between the built-in
+    transients and Playhead's events. The detector not in use stays marked as outlines and a chip counts both.
+    Variations keep the built-in transients, which they detect again on each pitched or stretched file.
+  - **Generate check:** every generated sound is measured (events and their type, decay and material class, time
+    arrow, burstiness, impulsiveness). For Impact hits the decay that the engine's damping law predicts is shown next
+    to Playhead's measurement.
+  - Playhead curves (loudness, activity, arousal, harshness, surprise) as drives for the Reaction engine and as
+    paths for spectral morph and granular weave.
+- Reaction engine in the Generate tab (action and reaction): the selected library sound is the action and a medium
+  responds to it: gravel, dry leaves, debris, water, air, sparks or a force field. The medium's event rate, level and
+  brightness follow the action's level (or a Playhead curve) after a delay, above a threshold, and settle with their
+  own inertia; the action can be mixed in. The preview draws the action and the medium's response. 8 types such as
+  Through gravel, Water wake, Air wake and Friction sparks.
+- Spectral morph and granular weave: "Amount over time" can follow A's level instead of an even ramp ("start" when A is
+  quiet, "end" when it is loud), or a Playhead curve of A.
+- DSP: `reactionGen`, `reactionControl`, `levelCurve`, `normalizeCurve` (`src/dsp/reaction.js`), `morphAmount`;
+  `textureGen` accepts an event-rate envelope (`rateEnv`); `renderAccents` accepts `events` and `refEvents` that
+  replace the built-in transients.
+
+### Changed
+- The engine switch in the Generate tab wraps on narrow screens.
+
 ## [0.5.0] - 2026-10-30
 
 ### Added

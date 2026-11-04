@@ -6,11 +6,14 @@
  *   groups           [title, specs][] parameter panels (spec format: see src/config/effects.js;
  *                    `show: { k, in: [...] }` hides a row unless param k has one of the listed values)
  *   types            dice: name -> () => partial params, randomised within sensible ranges
+ *   measure, drive   optional: the engine reads a measurement of the selected sound (Resynth) or follows it as an action
+ *                    (Reaction); the app keeps those outside the params so rolling types keeps them
  * Missing keys use the spec defaults. Engines: synth (src/dsp/generator.js), impact (src/dsp/physical.js),
- * texture (src/dsp/textures.js).
+ * texture (src/dsp/textures.js), resynth (src/dsp/modal.js), reaction (src/dsp/reaction.js).
  */
 import { MATERIALS, SHAPES } from '../dsp/physical.js';
 import { TEXTURE_KINDS } from '../dsp/textures.js';
+import { MEDIUM_KINDS } from '../dsp/reaction.js';
 
 export const GEN_GROUPS = [
   ['Oscillator', [
@@ -210,6 +213,44 @@ export const RESYNTH_TYPES = {
   'Blaster from it': RS(() => ({ ring: lr(0.08, 0.2), disp: rr(90, 100), keepAttack: 10 })),
 };
 
+/* ---------- Reaction: a medium that responds to an action (the selected sound) ---------- */
+const MED = k => ({ k: 'kind', in: k });
+export const REACTION_GROUPS = [
+  ['Response', [
+    { k: 'kind', l: 'Medium', type: 'select', opts: Object.entries(MEDIUM_KINDS), d: 'particles' },
+    { k: 'lag', l: 'Delay', min: 0, max: 400, step: 1, u: 'ms', d: 20 },
+    { k: 'inertia', l: 'Settles in', min: 10, max: 3000, log: true, u: 'ms', d: 250 },
+    { k: 'thresh', l: 'Ignore below', min: 0, max: 90, step: 1, u: '%', d: 10 },
+    { k: 'follow', l: 'Depth', min: 0, max: 100, step: 1, u: '%', d: 100 },
+    { k: 'bright', l: 'Brightening', min: 0, max: 100, step: 1, u: '%', d: 50 },
+    { k: 'action', l: 'Action mix', min: 0, max: 100, step: 1, u: 'off%', d: 0 },
+    { k: 'width', l: 'Stereo width', min: 0, max: 100, step: 1, u: '%', d: 60 },
+    { k: 'seed', l: 'Seed', min: 1, max: 999, step: 1, u: '#', d: 1 }]],
+  ['Medium', [
+    { k: 'density', l: 'Density', min: 0.5, max: 3000, log: true, u: '/s', d: 200, show: MED(['particles', 'liquid', 'sparks']) },
+    { k: 'material', l: 'Material', type: 'select', opts: MAT_OPTS, d: 'stone', show: MED(['particles']) },
+    { k: 'pitch', l: 'Pitch', min: 20, max: 12000, log: true, u: 'Hz', d: 2500, show: MED(['particles', 'sparks', 'wind', 'energy']) },
+    { k: 'spread', l: 'Pitch spread', min: 0, max: 4, step: 0.1, u: 'oct', d: 1.5, show: MED(['particles', 'sparks']) },
+    { k: 'sizeMin', l: 'Smallest bubble', min: 0.2, max: 20, log: true, u: 'mm', d: 1, show: MED(['liquid']) },
+    { k: 'sizeMax', l: 'Largest bubble', min: 0.2, max: 20, log: true, u: 'mm', d: 6, show: MED(['liquid']) },
+    { k: 'rise', l: 'Pitch rise', min: 0, max: 100, step: 1, u: '%', d: 20, show: MED(['liquid']) },
+    { k: 'hiss', l: 'Hiss', min: 0, max: 100, step: 1, u: '%', d: 30, show: MED(['sparks', 'liquid', 'energy']) },
+    { k: 'gust', l: 'Gusts', min: 0, max: 100, step: 1, u: '%', d: 20, show: MED(['wind']) },
+    { k: 'whistle', l: 'Whistle', min: 0, max: 100, step: 1, u: '%', d: 10, show: MED(['wind']) },
+    { k: 'crackle', l: 'Crackle', min: 0, max: 100, step: 1, u: '%', d: 30, show: MED(['energy']) },
+    { k: 'voices', l: 'Voices', min: 1, max: 8, step: 1, u: '', d: 4, show: MED(['energy']) }]],
+];
+export const REACTION_TYPES = {
+  'Through gravel': () => ({ kind: 'particles', material: 'stone', density: lr(150, 500), pitch: lr(1500, 3500), spread: rr(1, 2), lag: rr(5, 25), inertia: lr(120, 300), thresh: rr(5, 20), bright: rr(30, 60) }),
+  'Through dry leaves': () => ({ kind: 'particles', material: 'cardboard', density: lr(300, 900), pitch: lr(3000, 6000), spread: rr(1.5, 2.5), lag: rr(5, 30), inertia: lr(150, 400), thresh: rr(5, 15), bright: rr(40, 70) }),
+  'Debris trail': () => ({ kind: 'particles', material: pick(['wood', 'glass', 'stone']), density: lr(30, 120), pitch: lr(800, 3000), spread: rr(1.5, 2.5), lag: rr(40, 120), inertia: lr(600, 1500), thresh: rr(10, 30), bright: rr(20, 50) }),
+  'Water wake': () => ({ kind: 'liquid', density: lr(60, 200), sizeMin: lr(0.8, 2), sizeMax: lr(4, 9), rise: rr(15, 35), hiss: rr(10, 40), lag: rr(20, 60), inertia: lr(400, 1200), thresh: rr(5, 20), bright: rr(20, 50) }),
+  'Splash and settle': () => ({ kind: 'liquid', density: lr(150, 500), sizeMin: lr(1.5, 3), sizeMax: lr(8, 16), rise: rr(20, 45), hiss: rr(30, 60), lag: rr(0, 20), inertia: lr(800, 2000), thresh: rr(20, 40), bright: rr(30, 60) }),
+  'Air wake': () => ({ kind: 'wind', pitch: lr(300, 800), gust: rr(10, 30), whistle: rr(0, 20), lag: rr(10, 50), inertia: lr(300, 900), thresh: rr(0, 10), bright: rr(60, 90) }),
+  'Friction sparks': () => ({ kind: 'sparks', density: lr(300, 1200), pitch: lr(4000, 9000), spread: rr(1, 2), hiss: rr(20, 50), lag: 0, inertia: lr(40, 120), thresh: rr(30, 55), bright: rr(40, 70) }),
+  'Force field reacts': () => ({ kind: 'energy', pitch: lr(70, 160), voices: ri(3, 6), crackle: rr(20, 60), hiss: rr(20, 50), lag: rr(0, 30), inertia: lr(200, 800), thresh: rr(0, 15), bright: rr(50, 90) }),
+};
+
 /** All generator engines, in switch order. */
 export const ENGINES = {
   synth: { name: 'Synth', render: 'synthGen', groups: GEN_GROUPS, types: GEN_TYPES,
@@ -220,6 +261,8 @@ export const ENGINES = {
     desc: 'Measures the resonant modes of a recorded hit, knock or clang (the selected sound) and turns it into an object you can strike, scrape, roll, bounce or break, resize, re-ring or morph into another material.' },
   texture: { name: 'Texture', render: 'textureGen', groups: TEXTURE_GROUPS, types: TEXTURE_TYPES,
     desc: 'Streams of small physical events and continuous phenomena: gravel, sparks, electricity, fire, bubbles, rain, wind, energy fields and rumble. Stereo, with fades, ready to loop or layer.' },
+  reaction: { name: 'Reaction', render: 'reactionGen', groups: REACTION_GROUPS, types: REACTION_TYPES, drive: true,
+    desc: 'Action and reaction: the selected library sound is the action (a whoosh, a footstep, a pass-by) and a medium responds to it: gravel, leaves, water, air, sparks or a force field. The medium follows the action\'s level, or a Playhead curve when Playhead analysis is on, after a delay, and settles at its own pace.' },
 };
 /** Flat list of an engine's parameter specs. */
 export const engineSpecs = e => ENGINES[e].groups.flatMap(g => g[1]);

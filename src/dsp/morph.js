@@ -4,6 +4,20 @@ import { TAU, clamp, rng, len, peak, matchPeak, padTo, stretchLinear, monoAbs, f
 import { stft, istft, smoothMag, fftConv } from './fft.js';
 import { resample, varispeed } from './resample.js';
 
+/**
+ * How far a morph has gone at a point: `u` (0..1 through the result) for an even morph, or, when `p.curve` is given,
+ * that curve read at time `sec` (values 0..1 at `p.curveRate` Hz from the start of A, 0 after its end). The app passes
+ * a curve of A, such as its level or a Playhead curve, so the amount follows what happens in A.
+ */
+export function morphAmount(p, u, sec) {
+  const c = p.curve;
+  if (!c || !c.length) return u;
+  const x = sec * (p.curveRate || 100), k = Math.floor(x);
+  if (k < 0) return c[0];
+  if (k >= c.length) return 0;
+  return k + 1 < c.length ? c[k] + (c[k + 1] - c[k]) * (x - k) : c[k];
+}
+
 /* ---------- morphing: (A, B, sr, p) -> chs; A and B share sample rate and channel count ---------- */
 export const MORPH = {
   spectral(A, B, sr, p) {
@@ -14,7 +28,7 @@ export const MORPH = {
       const SA = stft(padTo(a, outLen), N), SB = stft(fit ? B[c] : padTo(B[c], outLen), N);
       const nF = SA.length, nFB = SB.length, Bn = N / 2 + 1;
       const frames = SA.map((X, f) => {
-        const u = nF > 1 ? f / (nF - 1) : 0, t = clamp((p.t0 + (p.t1 - p.t0) * u) / 100, 0, 1);
+        const u = nF > 1 ? f / (nF - 1) : 0, t = clamp((p.t0 + (p.t1 - p.t0) * morphAmount(p, u, u * outLen / sr)) / 100, 0, 1);
         const Y = SB[fit ? Math.min(nFB - 1, Math.round(u * (nFB - 1))) : Math.min(nFB - 1, f)];
         const re = new Float64Array(Bn), im = new Float64Array(Bn);
         for (let k = 0; k < Bn; k++) {
@@ -93,7 +107,7 @@ export const MORPH = {
     const out = Array.from({ length: nch }, () => new Float32Array(nA));
     const G = Math.max(16, Math.round(p.grain * sr / 1000)), hop = G / Math.max(1, p.overlap), R = rng(p.seed | 0);
     for (let t = 0; t < nA; t += hop * (0.6 + 0.8 * R())) {
-      const u = t / nA, pB = (p.bStart + (p.bEnd - p.bStart) * u) / 100, useB = R() < pB;
+      const u = t / nA, pB = (p.bStart + (p.bEnd - p.bStart) * morphAmount(p, u, t / sr)) / 100, useB = R() < pB;
       const S = useB ? B : A, sl = useB ? nB : nA;
       const sp = u * sl + (R() * 2 - 1) * p.jitter * sr / 1000;
       const rate = Math.pow(2, (R() * 2 - 1) * p.pjit / 12), rev = R() * 100 < p.rev, t0 = Math.round(t);

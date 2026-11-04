@@ -296,15 +296,18 @@ export const anchorTimes = (a, p) => anchorPoints(a, p).map(x => x.t);
  * @param {{ analysis?: object, reference?: Float32Array[], seed?: number, jitter?: boolean, safe?: boolean }} opts
  *   reference: a second sound at the same sample rate, for the 'ref' anchor and 'graft' kind (accent transfer).
  *   jitter: small random changes per render (offset, level, size) for variations. safe: keep the peak at or below -1 dBFS.
+ *   events, refEvents: [{ at (sample), strength (dB re the sound's peak) }] replace the built-in transients of the sound
+ *   or the reference, for the "Each transient" and "Reference rhythm" anchors (for example events found by Playhead).
  * Slot refinements: duck (dB, lowers the sound under the accent), pan (-100..100; makes a mono result stereo),
  * chance (% probability that each accent appears), tune 'local' (match the pitch at the anchor).
  * @returns {{ ch: Float32Array[], lead: number, marks: { slot:number, start:number, len:number, anchor:number }[], analysis: object }}
  *   lead: samples of silence added in front when a lead-in accent starts before 0; marks use output positions.
  */
 export function renderAccents(chs, sr, slots, opts = {}) {
-  const a = opts.analysis || analyzeStructure(chs, sr), src = monoMix(chs), R = rng((opts.seed | 0) * 7919 + 3);
+  const withEvents = (an, ev) => (an && Array.isArray(ev) ? { ...an, transients: ev.filter(e => e.at >= 0 && e.at < an.n).sort((x, y) => x.at - y.at) } : an);
+  const a = withEvents(opts.analysis || analyzeStructure(chs, sr), opts.events), src = monoMix(chs), R = rng((opts.seed | 0) * 7919 + 3);
   const ref = opts.reference && len(opts.reference) ? monoMix(opts.reference) : null;
-  const refA = ref ? analyzeStructure(opts.reference, sr) : null;
+  const refA = ref ? withEvents(analyzeStructure(opts.reference, sr), opts.refEvents) : null;
   const placed = [];
   slots.forEach((p, si) => {
     if (!p || !p.on || !ACCENT_KINDS[p.kind]) return;

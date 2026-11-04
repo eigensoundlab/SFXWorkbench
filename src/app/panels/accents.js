@@ -2,6 +2,8 @@
 /**
  * Accents tab: analyse the selected sound's structure and add context-aware accents at structural points.
  * The analysis and rendering live in src/dsp/accents.js; kinds, slot specs and recipes in src/config/accents.js.
+ * With Playhead analysis on, "Events from" can switch the "Each transient" and "Reference rhythm" anchors from the
+ * built-in transient detector to Playhead's events; the other detector's events stay marked for comparison.
  */
 import * as D from '../../dsp/index.js';
 import { $, h, toast } from '../dom.js';
@@ -13,9 +15,10 @@ import { paramRow, syncWhen, nudge } from '../controls.js';
 import { play } from '../audio.js';
 import { drawWave } from '../draw.js';
 import { addSound } from '../library.js';
+import { PH, phDoc, phEvents } from '../playhead.js';
 
 const freshSlot = (on = false) => ({ on, ...defaults(ACCENT_SPECS) });
-let timer = 0, baseCache = { key: '', ch: null };
+let timer = 0, baseCache = { key: '', ch: null }, structCache = { key: '', a: null };
 
 /** Slots ready for rendering: the "Selection start" anchor reads the current selection on the source waveform. */
 export function activeSlots(sound) {
@@ -51,13 +54,38 @@ function baseAudio(s) {
   return baseCache.ch;
 }
 
+/** Re-render quietly when Playhead events arrive for comparison marks; with Playhead events in use, render and play. */
+const quietRefresh = () => { if (S.tab === 'acc') renderAccentResult(); };
+const eventsReady = () => schedule();
+
+/**
+ * Playhead events for the anchors: { events, refEvents, ph, wait }. events/refEvents are null while the built-in
+ * detector is used; ph holds Playhead's events of the sound (for the comparison marks) once they are ready.
+ */
+function accentEvents(s, base) {
+  if (!PH.on) return {};
+  const usePh = S.acc.det === 'ph';
+  const doc = phDoc('acc:' + baseCache.key, { sr: s.sr, ch: base }, 'acc', usePh ? eventsReady : quietRefresh), ph = phEvents(doc, s.sr);
+  if (!usePh) return { ph };
+  const refCh = accentReference(s.sr);
+  let refEvents = null, wait = !doc;
+  if (refCh) {
+    const rd = phDoc('ref:' + refCache.key, { sr: s.sr, ch: refCh }, 'ref', eventsReady);
+    if (rd) refEvents = phEvents(rd, s.sr); else wait = true;
+  }
+  return { events: ph, refEvents, ph, wait };
+}
+
 export function renderAccentResult() {
   const s = cur();
   if (!s) { S.accRes = null; drawAcc(); return null; }
   try {
-    const base = baseAudio(s);
-    const r = D.renderAccents(base, s.sr, activeSlots(s), { seed: S.acc.seed, reference: accentReference(s.sr) });
-    S.accRes = { ...r, sr: s.sr, src: s, ver: (S.accRes ? S.accRes.ver : 0) + 1 };
+    const base = baseAudio(s), ev = accentEvents(s, base);
+    S.accWait = !!ev.wait;
+    if (ev.wait) { renderReadout(); return null; }
+    if (structCache.key !== baseCache.key) structCache = { key: baseCache.key, a: D.analyzeStructure(base, s.sr) };
+    const r = D.renderAccents(base, s.sr, activeSlots(s), { analysis: structCache.a, seed: S.acc.seed, reference: accentReference(s.sr), events: ev.events, refEvents: ev.refEvents });
+    S.accRes = { ...r, sr: s.sr, src: s, ver: (S.accRes ? S.accRes.ver : 0) + 1, builtin: structCache.a.transients, ph: ev.ph || null, usedPh: !!ev.events };
   } catch (e) {
     console.error(e); S.accRes = null; toast('Could not render the accents: ' + e.message, 'err');
   }
@@ -67,6 +95,7 @@ export function renderAccentResult() {
 
 function renderReadout() {
   const r = S.accRes, el = $('#acc-readout');
+  if (S.accWait) { el.replaceChildren(h('span', { class: 'chip' }, h('b', { text: 'Playhead ' }), 'is finding the events…')); return; }
   if (!r) { el.replaceChildren(); return; }
   const d = D.describeStructure(r.analysis), hz = v => (v >= 1000 ? (v / 1000).toFixed(2) + ' kHz' : Math.round(v) + ' Hz');
   const chip = (label, value) => h('span', { class: 'chip', title: label }, h('b', { text: label + ' ' }), value);
@@ -77,6 +106,7 @@ function renderReadout() {
     chip('Result', `${fmtDur(D.len(r.ch) / r.sr)} s${r.lead ? `, ${fmtDur(r.lead / r.sr)} s lead-in` : ''}${r.ch.length !== r.src.ch.length ? ', stereo (panned)' : ''}`),
     r.refAnalysis ? chip('Reference events', String(Math.max(0, r.refAnalysis.transients.length - 1))) : null,
     S.acc.slots.some(sl => sl.on && sl.anchor === 'ref') && !r.refAnalysis ? chip('Reference', 'choose one for "Reference rhythm"') : null,
+    PH.on && r.ph ? chip(r.usedPh ? 'Using Playhead events' : 'Using built-in transients', r.usedPh ? `${r.ph.length} (built-in: ${r.builtin.length})` : `${r.builtin.length} (Playhead: ${r.ph.length})`) : null,
   ].filter(Boolean));
 }
 
@@ -95,6 +125,12 @@ export function drawAcc() {
       band(a.onset, a.peakAt, T.danger, 'attack'); band(a.peakAt, a.bodyEnd, T.accent, 'body'); band(a.bodyEnd, a.tailEnd, T.muted, 'tail');
       g.fillStyle = T.ink;
       for (const t of a.transients) { const px = x(t.at); g.beginPath(); g.moveTo(px - 4, H); g.lineTo(px + 4, H); g.lineTo(px, H - 7); g.fill(); }
+      // With Playhead on, the detector not in use is drawn as outlines just above, for comparison.
+      const other = PH.on && r.ph ? (r.usedPh ? r.builtin : r.ph) : null;
+      if (other) {
+        g.strokeStyle = T.ink; g.lineWidth = 1;
+        for (const t of other) { const px = x(t.at); g.beginPath(); g.moveTo(px - 4, H - 9); g.lineTo(px + 4, H - 9); g.lineTo(px, H - 16); g.closePath(); g.stroke(); }
+      }
       // One lane per accent slot: a bar for the accent's sound, a tick at its anchor and the slot number.
       g.font = '10px "IBM Plex Mono", monospace';
       const labelled = new Set();
@@ -144,18 +180,20 @@ function mutate() {
 
 /** Wire the Accents tab. */
 export function initAccents() {
-  S.acc = { src: 'out', seed: 1, ref: null, slots: Array.from({ length: SLOTS }, () => freshSlot()) };
+  S.acc = { src: 'out', det: 'builtin', seed: 1, ref: null, slots: Array.from({ length: SLOTS }, () => freshSlot()) };
   renderRefOptions();
   $('#acc-ref').onchange = e => { S.acc.ref = e.target.value ? +e.target.value : null; schedule(); };
   const rs = $('#acc-recipe');
   rs.replaceChildren(h('option', { value: '', text: 'Choose…' }), ...Object.entries(ACCENT_RECIPES).map(([g, items]) => h('optgroup', { label: g }, Object.keys(items).map(k => h('option', { value: g + '|' + k, text: k })))));
   rs.onchange = e => { const v = e.target.value; e.target.value = ''; if (!v) return; const [g, k] = v.split('|'); loadRecipe(ACCENT_RECIPES[g][k]); toast(`Loaded ${k}`); };
   $('#acc-src').onchange = e => { S.acc.src = e.target.value; schedule(); };
-  $('#acc-play').onclick = () => { const r = renderAccentResult(); if (r) play({ sr: r.sr, ch: r.ch }, 0, null, 'acc'); };
+  $('#acc-det').onchange = e => { S.acc.det = e.target.value; schedule(); };
+  const busy = () => toast('Playhead is still finding the events. Try again in a moment.');
+  $('#acc-play').onclick = () => { const r = renderAccentResult(); if (r) play({ sr: r.sr, ch: r.ch }, 0, null, 'acc'); else if (S.accWait) busy(); };
   $('#acc-mutate').onclick = mutate;
   $('#acc-clear').onclick = () => { S.acc.slots = Array.from({ length: SLOTS }, () => freshSlot()); renderSlots(); schedule(); };
   $('#acc-add').onclick = () => {
-    const r = renderAccentResult(); if (!r) return;
+    const r = renderAccentResult(); if (!r) { if (S.accWait) busy(); return; }
     if (!hasAccents()) return toast('Turn on an accent or load a recipe first.');
     const s = r.src, snd = addSound(newSound(safeName(s.name) + '_acc', r.sr, D.copy(r.ch), s.bits, s.isFloat, 'render'), { select: true });
     toast(`Added ${snd.name} to the library and selected it.`);

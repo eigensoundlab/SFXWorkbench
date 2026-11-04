@@ -12,6 +12,8 @@ src/config   data: effect specs, presets, tool and generator specs
 src/app      UI: state, rendering, events, playback, files        ──uses──▶  src/dsp, src/io
    │
 src/main.js  boot and global wiring
+
+src/vendor   copied-in builds (Playhead), used by src/app only
 ```
 
 `src/dsp` and `src/io` are pure: they import nothing from the UI, never touch the DOM or Web Audio, and run in Node.
@@ -83,6 +85,26 @@ from the slot params and a context (source, anchor, analysis), and grains are mi
 loudness. Lead-in accents that start before 0 shift the whole sound by `lead` samples. The panel
 (`src/app/panels/accents.js`) builds on the sound with its effect chain but without finishing, so finishing still
 applies when the result is saved. Variations call `renderAccents` with `jitter: true` and a per-file seed.
+
+## Generator engines with an input sound
+
+Two engines read the selected library sound, kept outside the engine params so rolling types keeps it: Resynth
+(`measure: true`, the measurement in `S.gMeasured`) and Reaction (`drive: true`, the action in `S.gDrive` with the
+chosen "Follow" curve). The panel turns the action into a drive curve (`levelCurve`, or a Playhead curve through
+`normalizeCurve`) and passes it to `reactionGen` as `driveCurve`, `driveRate` and `actionCh`.
+
+## Playhead (optional analysis)
+
+`src/app/playhead.js` wraps the vendored Playhead core. `PH.on` is the user's switch (localStorage, default off). Every
+use goes through `phDoc(key, sound, slot, onReady)`: it returns the cached Playhead document or null, starts the
+analysis if needed and calls `onReady` once when it arrives. Analyses run one at a time; a newer request in the same
+slot ('src', 'out', 'acc', 'ref', 'gen', 'drv', 'mix') replaces an older one that has not started, so dragging a
+slider does not queue stale work. Keys follow the audio (sound id and version, output cache key, generator version).
+
+The DSP never imports Playhead (ESLint checks). The panels turn Playhead results into plain data first: events become
+`[{ at, strength }]` for `renderAccents`, curves become 0..1 arrays for `reactionGen` and the morphs (`morphAmount`).
+With `PH.on` false none of this runs and the panels pass nothing extra, which is what makes the with/without comparison
+exact.
 
 ## Saving
 

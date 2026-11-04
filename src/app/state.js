@@ -10,11 +10,11 @@ import { ENGINES, engineSpecs } from '../config/generator.js';
 
 let uid = 1, fxid = 1;
 export const S = {
-  sounds: [], selId: null, sel: null, cursor: 0, chain: [], chainOn: true, chainHist: [], out: null, view: 'wave', tab: 'fx',
+  sounds: [], selId: null, sel: null, cursor: 0, chain: [], chainOn: true, chainHist: [], out: null, view: 'wave', tab: 'fx', // view: 'wave' | 'spec' | 'ph'
   vp: defaults(VAR_SPEC), vname: '{name}_var{nn}', vars: [],
   mode: 'cross', A: null, B: null, mp: Object.fromEntries(Object.entries(MIX).filter(([, m]) => m.params).map(([k, m]) => [k, defaults(m.params)])),
   layers: [], layerNorm: true,
-  gEngine: 'synth', gParams: Object.fromEntries(Object.keys(ENGINES).map(e => [e, defaults(engineSpecs(e))])), gTypes: {}, gOut: null, gVer: 0, gCount: {},
+  gEngine: 'synth', gParams: Object.fromEntries(Object.keys(ENGINES).map(e => [e, defaults(engineSpecs(e))])), gTypes: {}, gOut: null, gVer: 0, gCount: {}, gDrive: null,
   sp: defaults(SLICE_SPEC), slices: null, lp: defaults(LOOP_SPEC),
   exp: { fmt: 'source', sr: 'source' },
   fin: { lufs: 'off', ch: 'source', trim: false, dc: true, declick: true, ceil: true },

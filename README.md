@@ -31,14 +31,17 @@ and open it in any modern browser.
   local pitch tuning and per-accent chance. 30 recipes; variations can include the accents, slightly different in
   each file.
 - **Combine and morph:** layer stack, spectral morph, cross-synthesis, convolution, envelope transfer, ring multiply and
-  granular weave.
-- **Generate** with three engines, each with dice types to roll, mutate and refine:
+  granular weave. Spectral morph and granular weave can follow A's level (or a Playhead curve) instead of an even ramp.
+- **Generate** with five engines, each with dice types to roll, mutate and refine:
   - *Impact*: a physical model built as **cause → object → aftermath**. An action (hit, scrape, roll, crack) excites a
     resonant object (11 materials, 7 shapes), followed by bounces, rolling, debris and rumble. Ammo shells, coins,
     glass shatter, wall collapse, ice cracks, blaster wires, ricochets and more.
   - *Texture*: gravel and debris, sparks, electric arcs, fire, bubbles and drips, rain, wind, energy fields, rumble.
   - *Resynth*: measures the resonant modes of a recorded hit and turns it into an editable object. Make your desk
     knock bigger, turn a pan into glass, drop it, scrape it or break it.
+  - *Reaction*: action and reaction. A library sound is the action (a whoosh, a footstep, a pass-by) and a medium
+    responds to it: gravel, dry leaves, debris, water, air, sparks or a force field, after a delay and with its own
+    inertia.
   - *Synth*: classic one-shot synthesis in the spirit of sfxr.
   - "Add as layer" sends a generated sound straight into the layer stack to build action + effect designs.
 - **Slice and loop:** split many takes in one recording at the silences; build seamless loops and start/loop/stop sets
@@ -46,6 +49,26 @@ and open it in any modern browser.
 - **Finishing on everything you save:** loudness target (LUFS), mono or stereo, silence trim, DC removal, de-click
   edges, peak ceiling. Formats: source, 16/24-bit PCM or 32-bit float; any common sample rate.
 - **Waveform or spectrum** display, light and dark themes, keyboard shortcuts.
+- **Playhead analysis (optional):** see below.
+
+### Playhead analysis (optional)
+
+[Playhead](https://github.com/eigensoundlab/playhead) is an analysis library by the same author: overview curves
+(loudness, activity, arousal, harshness, surprise), sound events with Schaeffer-style types, and descriptors from other
+fields (spectral kurtosis, time arrow, burstiness, Klatzky decay). Turn it on with **Playhead analysis** next to the
+Display buttons. It is off by default and the choice is remembered in the browser; while it is off nothing is analysed
+and every tool behaves as without it, so you can compare:
+
+| Where | Without Playhead | With Playhead |
+|---|---|---|
+| Source and output lanes | Wave or Spectrum | **Playhead** view: calm faint, harsh strong, activity line, events |
+| Accents, "Events from" | built-in transients | Playhead events (the other set stays marked as outlines) |
+| Reaction engine, "Follow" | the action's level | a Playhead curve of the action |
+| Spectral morph, granular weave | even or A's level | a Playhead curve of A |
+| Generate | | a check of every generated sound (events, decay and material, time arrow, burstiness) |
+
+Switching between the two settings re-renders with everything else unchanged (same seed), so the difference you hear
+is the analysis. Analysis runs in the page; a 2 s sound takes about half a second the first time and is cached.
 
 ### Keyboard shortcuts
 
@@ -97,3 +120,5 @@ Recording needs a secure page (the GitHub Pages site, or `npm start` on localhos
 Licensed under the [Apache License 2.0](LICENSE). Copyright 2026 Daniel Sandner
 ([ORCID 0000-0002-1041-814X](https://orcid.org/0000-0002-1041-814X)).
 If you use SFX Workbench in research or teaching, please cite it using [CITATION.cff](CITATION.cff).
+The optional analysis is Playhead ([source](https://github.com/eigensoundlab/playhead), Apache-2.0,
+[DOI 10.5281/zenodo.23932625](https://doi.org/10.5281/zenodo.23932625)), included as `src/vendor/playhead-core.mjs`.

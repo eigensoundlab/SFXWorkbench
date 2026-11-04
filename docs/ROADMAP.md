@@ -16,6 +16,10 @@ Ideas ranked roughly by value for game sound work. Open an issue before starting
 
 ## Sound design
 
+- Playhead integration, next steps: run the analysis in a Web Worker; envelope transfer and the Reaction engine driven
+  by several curves at once (level for loudness, harshness for brightness, activity for density); accent recipes
+  suggested from Playhead's event types; decay check for short, damped hits (plastic, stone, rubber), which Playhead
+  does not measure yet.
 - Accents, next steps: accents that follow a continuous pitch glide, transfer of the reference's levels over time
   (not only its events), automatic recipe suggestions from the analysis.
 - Modal resynthesis, next steps: measure several hits of one object at different positions to learn real mode shapes;

@@ -18,6 +18,7 @@ export * from './physical.js';
 export * from './textures.js';
 export * from './accents.js';
 export * from './modal.js';
+export * from './reaction.js';
 export { synth } from './examples.js';
 export * from '../io/wav.js';
 export * from '../io/zip.js';

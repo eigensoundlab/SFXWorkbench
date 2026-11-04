@@ -50,6 +50,9 @@ function rateEnvelope(shape, n, sr, R) {
   return e;
 }
 
+/** The event-rate envelope given by the caller (p.rateEnv: n values in 0..1, used by the Reaction engine), else the built-in one. */
+const rateOr = (p, n, make) => (p.rateEnv && p.rateEnv.length === n ? p.rateEnv : make());
+
 /** Poisson event times with rate density * env(t). Calls fn(sampleIndex, envValue). */
 function events(n, sr, density, env, R, fn) {
   const peakRate = Math.max(0.01, density);
@@ -108,7 +111,7 @@ export function bubble(out, t0, radiusMm, amp, rise, sr) {
 
 const KIND = {
   particles(p, n, sr, R) {
-    const o = new Float32Array(n), env = rateEnvelope(p.shape, n, sr, R), mat = MATERIALS[p.material] || MATERIALS.stone;
+    const o = new Float32Array(n), env = rateOr(p, n, () => rateEnvelope(p.shape, n, sr, R)), mat = MATERIALS[p.material] || MATERIALS.stone;
     const shape = ['steel', 'brass', 'aluminium', 'glass', 'ceramic', 'ice'].includes(p.material) ? 'plate' : 'box';
     events(n, sr, p.density, env, R, (t, e) => {
       const f = p.pitch * Math.pow(2, (R() + R() - 1) * p.spread);
@@ -120,7 +123,7 @@ const KIND = {
     return o;
   },
   sparks(p, n, sr, R) {
-    const o = new Float32Array(n), env = rateEnvelope(p.shape, n, sr, R);
+    const o = new Float32Array(n), env = rateOr(p, n, () => rateEnvelope(p.shape, n, sr, R));
     events(n, sr, p.density, env, R, (t, e) => {
       const a = Math.min(1, 0.06 * Math.pow(1 - R() * 0.999, -0.8)) * (0.4 + 0.6 * e);
       o[t] += a; if (t + 1 < n) o[t + 1] -= a * 0.7;
@@ -173,7 +176,7 @@ const KIND = {
     return o;
   },
   liquid(p, n, sr, R) {
-    const o = new Float32Array(n), env = rateEnvelope(p.shape, n, sr, R), lo = Math.min(p.sizeMin, p.sizeMax), hi = Math.max(p.sizeMin, p.sizeMax);
+    const o = new Float32Array(n), env = rateOr(p, n, () => rateEnvelope(p.shape, n, sr, R)), lo = Math.min(p.sizeMin, p.sizeMax), hi = Math.max(p.sizeMin, p.sizeMax);
     const rise = p.rise / 100 * 0.5;
     events(n, sr, p.density, env, R, (t, e) => {
       const r = lo + (hi - lo) * R() * R(), a = Math.pow(r / hi, 0.6) * (0.3 + 0.7 * R()) * (0.5 + 0.5 * e);
@@ -183,7 +186,7 @@ const KIND = {
     return o;
   },
   rain(p, n, sr, R) {
-    const o = new Float32Array(n), env = rateEnvelope('random', n, sr, R).map(v => 0.6 + 0.4 * v), hard = p.hard / 100;
+    const o = new Float32Array(n), env = rateOr(p, n, () => rateEnvelope('random', n, sr, R).map(v => 0.6 + 0.4 * v)), hard = p.hard / 100;
     events(n, sr, p.density, env, R, t => {
       const a = 0.15 + 0.85 * R() * R();
       if (R() < hard) {
