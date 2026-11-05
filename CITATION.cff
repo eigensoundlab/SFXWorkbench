@@ -10,7 +10,7 @@ authors:
 repository-code: "https://github.com/eigensoundlab/SFXWorkbench"
 url: "https://eigensoundlab.github.io/SFXWorkbench/"
 license: Apache-2.0
-version: 0.8.0
+version: 0.9.0
 date-released: 2026-11-05
 keywords:
   - sound design

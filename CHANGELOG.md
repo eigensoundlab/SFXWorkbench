@@ -5,6 +5,21 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-05
+
+### Added
+- Three Playhead tools for levels and channels. Level the events evens out how loud the events are (footsteps, impacts,
+  a burst of shots) with one gain per event, so attacks and decays keep their shape and the background does not pump
+  as it does under a compressor. Fold to mono lines up the channels' phase per frequency before summing and keeps the
+  level per channel; each attack is folded with its own delay between the channels, and the report names the bands
+  and events that a plain average (To mono, Finishing) would cancel. Widen the tails adds width only after the
+  attacks, with the lows centred; the result folds back to the original exactly.
+- Two Playhead looks for sound effects, Sound character (onset strength, harshness, impulsiveness) and Hits and
+  surprise (with spectral surprise instead of impulsiveness).
+
+### Changed
+- Playhead 0.2.0 (the released build of the core used since 0.6.0).
+
 ## [0.8.0] - 2026-11-05
 
 ### Added

@@ -114,14 +114,16 @@ export function phLegend(doc) {
 
 /* ---------- Playhead's analysis-driven tools ---------- */
 
-/** The tools offered in the Effects tab, with parameters as Workbench specs: de-harsh and attack and body, and three that
- *  no EQ can copy because they follow the events (reverb on the tails, drive the hits, ring time). */
-export const PH_TOOLS = ['deharsh', 'hpss', 'tailverb', 'drive', 'ring'];
+/** The tools offered in the Effects tab, with parameters as Workbench specs: de-harsh and attack and body, three that
+ *  no EQ can copy because they follow the events (reverb on the tails, drive the hits, ring time), and three for levels
+ *  and channels (level the events; fold to mono and widen the tails, which change the channel count by design). */
+export const PH_TOOLS = ['deharsh', 'hpss', 'tailverb', 'drive', 'ring', 'level', 'mono', 'widen'];
 export function phToolSpecs() {
   return Playhead.tools().filter(t => PH_TOOLS.includes(t.id)).map(t => ({
     id: t.id, name: t.name, desc: t.description,
     params: t.params.map(p => {
-      const sp = { k: p.id, l: p.label, d: p.id === 'delta' ? false : p.value };
+      // extra comparison renders (what de-harsh removed, the plain mono sum) are off unless asked for
+      const sp = { k: p.id, l: p.label, d: p.id === 'delta' || p.id === 'plain' ? false : p.value };
       if (p.type === 'bool') sp.type = 'bool';
       else if (p.type === 'select') { sp.type = 'select'; sp.opts = p.options; }
       else Object.assign(sp, { min: p.min, max: p.max, step: p.step, u: p.id === 'maxCut' ? 'cut' : ['dB', 's', 'Hz', '%', 'ms'].includes(p.unit) ? p.unit : '' });

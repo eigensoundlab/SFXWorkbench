@@ -40,6 +40,7 @@ test('looks: ready-made looks, codes checked by Playhead, looks that fit a sound
   const doc = await Playhead.analyze({ sampleRate: SR, channels: ex.metal }, { profile: 'sfx' });
   const names = phLooks().map(([k]) => k);
   assert.ok(names.includes('auto') && names.includes('spectrum') && names.includes('sculpted') && names.length >= 10);
+  assert.ok(names.includes('character') && phLookFits(doc, 'character'), 'the sound-effect look fits a sound effect');
   assert.equal(phCheckCode(' wave:harshness , lane:activity,nonsense '), 'wave:harshness,lane:activity');
   assert.equal(phCheckCode('nonsense'), null);
   assert.ok(phLookFits(doc, 'events') && phLookFits(doc, 'spectrum') && !phLookFits(doc, 'structure'), 'structure needs music');
@@ -53,7 +54,7 @@ test('looks: ready-made looks, codes checked by Playhead, looks that fit a sound
 test('Playhead tools: specs fit the Workbench controls; de-harsh keeps rate, channels and length', async () => {
   const { phToolSpecs, phProcess } = await import('../src/app/playhead.js');
   const specs = phToolSpecs();
-  assert.deepEqual(specs.map(t => t.id), ['deharsh', 'hpss', 'tailverb', 'drive', 'ring']);
+  assert.deepEqual(specs.map(t => t.id), ['deharsh', 'hpss', 'tailverb', 'drive', 'ring', 'level', 'mono', 'widen']);
   for (const t of specs) for (const sp of t.params) {
     assert.ok(sp.k && sp.l, `${t.id}: key and label`);
     if (sp.type === 'select') assert.ok(sp.opts.some(([v]) => v === sp.d), `${t.id}.${sp.k}: default among options`);
@@ -62,6 +63,7 @@ test('Playhead tools: specs fit the Workbench controls; de-harsh keeps rate, cha
   }
   const p = Object.fromEntries(specs[0].params.map(sp => [sp.k, sp.d]));
   assert.equal(p.delta, false, 'the removed part is not rendered unless asked for');
+  assert.equal(specs.find(t => t.id === 'mono').params.find(sp => sp.k === 'plain').d, false, 'nor the plain mono sum');
   const src = ex.metal.length === 1 ? [ex.metal[0], ex.metal[0].map(v => v * 0.8)] : ex.metal;
   const r = await phProcess({ sr: SR, ch: src, name: 'metal' }, 'deharsh', p);
   assert.equal(r.outputs.length, 1);
@@ -82,4 +84,28 @@ test('Playhead tools that follow the events: reverb adds a tail, drive and ring 
     assert.ok(o.channels[0].length === n && o.channels.length === src.length && o.channels.every(c => c.every(Number.isFinite)), id);
     assert.ok(r.report.length > 0, id);
   }
+});
+
+test('Playhead tools for levels and channels: level keeps the shape, fold to mono and widen the tails change the channel count', async () => {
+  const { phToolSpecs, phProcess } = await import('../src/app/playhead.js');
+  const specs = Object.fromEntries(phToolSpecs().map(t => [t.id, Object.fromEntries(t.params.map(sp => [sp.k, sp.d]))]));
+  // three hits at very different levels
+  const n = SR * 2, x = new Float32Array(n);
+  [0.9, 0.1, 0.4].forEach((g, j) => { const i0 = Math.round((0.2 + 0.6 * j) * SR); for (let k = 0; k < 0.3 * SR; k++) x[i0 + k] += g * Math.exp(-k / (0.05 * SR)) * Math.sin(2 * Math.PI * 600 * k / SR); });
+  const lv = await phProcess({ sr: SR, ch: [x], name: 'hits' }, 'level', { ...specs.level, match: false }), y = lv.outputs[0].channels[0];
+  const pk = (z, j) => { const i0 = Math.round((0.2 + 0.6 * j) * SR); let m = 0; for (let k = 0; k < 0.25 * SR; k++) m = Math.max(m, Math.abs(z[i0 + k])); return m; };
+  assert.ok(y.length === n && pk(y, 1) / pk(y, 0) > 2 * pk(x, 1) / pk(x, 0), 'the quiet hit comes closer to the loud one');
+  // a stereo pair 2 ms apart: the fold keeps the level a plain average loses to comb filtering
+  const d = Math.round(0.002 * SR), L = ex.gunshot[0], R = Float32Array.from(L, (_, i) => (i >= d ? L[i - d] : 0));
+  const fold = await phProcess({ sr: SR, ch: [L, R], name: 'pair' }, 'mono', { ...specs.mono, plain: true });
+  assert.deepEqual(fold.outputs.map(o => o.channels.length), [1, 1]);
+  assert.ok(fold.outputs.every(o => o.sampleRate === SR && o.channels[0].length === L.length));
+  const e = c => c.reduce((s, v) => s + v * v, 0), eL = e(L), eR = e(R);
+  const [fe, pe] = fold.outputs.map(o => e(o.channels[0]) / (0.5 * (eL + eR)));
+  assert.ok(Math.abs(10 * Math.log10(fe)) < 0.5 && fe > pe, `folded ${fe}, plain ${pe}`);
+  // widen a mono sound: two channels whose average is the original
+  const wd = await phProcess({ sr: SR, ch: [L], name: 'shot' }, 'widen', { ...specs.widen, width: 100 }), [a, b] = wd.outputs[0].channels;
+  assert.equal(wd.outputs[0].channels.length, 2);
+  let back = 0, side = 0; for (let i = 0; i < L.length; i++) { back = Math.max(back, Math.abs(0.5 * (a[i] + b[i]) - L[i])); side += (a[i] - b[i]) ** 2; }
+  assert.ok(back < 1e-6 && side > 0, `fold back ${back}`);
 });
