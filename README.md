@@ -61,11 +61,16 @@ and every tool behaves as without it, so you can compare:
 
 | Where | Without Playhead | With Playhead |
 |---|---|---|
-| Source and output lanes | Wave or Spectrum | **Playhead** view: calm faint, harsh strong, activity line, events |
+| Source and output lanes | Wave or Spectrum | **Playhead** view in a look you choose (spectrogram, curves as waveforms, a waveform as loud as it sounds, ...) |
 | Accents, "Events from" | built-in transients | Playhead events (the other set stays marked as outlines) |
 | Reaction engine, "Follow" | the action's level | a Playhead curve of the action |
 | Spectral morph, granular weave | even or A's level | a Playhead curve of A |
 | Generate | | a check of every generated sound (events, decay and material, time arrow, burstiness) |
+| Effects | the effect chain | also **Playhead tools**: de-harsh and attack and body, rendered into the library |
+
+The look bar above the source lane picks one of Playhead's looks or takes a look code made in the
+[Playhead lab](https://eigensoundlab.github.io/playhead/)'s composer, and links to a short feedback form. Telling us
+which looks help (and which mislead) decides the defaults.
 
 Switching between the two settings re-renders with everything else unchanged (same seed), so the difference you hear
 is the analysis. Analysis runs in the page; a 2 s sound takes about half a second the first time and is cached.

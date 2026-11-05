@@ -34,3 +34,39 @@ test('Playhead events become accent anchors and curves become 0..1 drives', asyn
   const out = D.reactionGen({ kind: 'particles', lag: 10, inertia: 200, thresh: 10, follow: 100, bright: 50, action: 0, width: 0, seed: 1, density: 200, material: 'stone', pitch: 2500, spread: 1.5, driveCurve: c.values, driveRate: c.rate }, SR);
   assert.ok(D.peak(out) > 0.5);
 });
+
+test('looks: ready-made looks, codes checked by Playhead, looks that fit a sound effect, the strip in a look', async () => {
+  const { phLooks, phCheckCode, phLookFits, drawPhStrip, setLook, PH } = await import('../src/app/playhead.js');
+  const doc = await Playhead.analyze({ sampleRate: SR, channels: ex.metal }, { profile: 'sfx' });
+  const names = phLooks().map(([k]) => k);
+  assert.ok(names.includes('auto') && names.includes('spectrum') && names.includes('sculpted') && names.length >= 10);
+  assert.equal(phCheckCode(' wave:harshness , lane:activity,nonsense '), 'wave:harshness,lane:activity');
+  assert.equal(phCheckCode('nonsense'), null);
+  assert.ok(phLookFits(doc, 'events') && phLookFits(doc, 'spectrum') && !phLookFits(doc, 'structure'), 'structure needs music');
+  let fills = 0; const g = new Proxy({ canvas: { width: 300, height: 80 } }, { get: (t, k) => k in t ? t[k] : (...a) => { if (k === 'fillRect') fills++; }, set: () => true });
+  setLook('spectrum');
+  const r = drawPhStrip(g, doc, 300, 80, {});
+  assert.ok(r.legend.startsWith('spectrogram') && fills > 100 && PH.look === 'spectrum');
+  setLook('auto');
+});
+
+test('Playhead tools: specs fit the Workbench controls; de-harsh keeps rate, channels and length', async () => {
+  const { phToolSpecs, phProcess } = await import('../src/app/playhead.js');
+  const specs = phToolSpecs();
+  assert.deepEqual(specs.map(t => t.id), ['deharsh', 'hpss']);
+  for (const t of specs) for (const sp of t.params) {
+    assert.ok(sp.k && sp.l, `${t.id}: key and label`);
+    if (sp.type === 'select') assert.ok(sp.opts.some(([v]) => v === sp.d), `${t.id}.${sp.k}: default among options`);
+    else if (sp.type === 'bool') assert.equal(typeof sp.d, 'boolean');
+    else assert.ok(sp.min < sp.max && sp.d >= sp.min && sp.d <= sp.max, `${t.id}.${sp.k}: default in range`);
+  }
+  const p = Object.fromEntries(specs[0].params.map(sp => [sp.k, sp.d]));
+  assert.equal(p.delta, false, 'the removed part is not rendered unless asked for');
+  const src = ex.metal.length === 1 ? [ex.metal[0], ex.metal[0].map(v => v * 0.8)] : ex.metal;
+  const r = await phProcess({ sr: SR, ch: src, name: 'metal' }, 'deharsh', p);
+  assert.equal(r.outputs.length, 1);
+  const o = r.outputs[0];
+  assert.ok(o.sampleRate === SR && o.channels.length === 2 && o.channels[0].length === src[0].length);
+  assert.ok(o.channels.every(c => c.every(Number.isFinite)) && r.report.length > 0);
+  assert.notDeepEqual(o.channels[0], src[0]);
+});

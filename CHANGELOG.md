@@ -5,6 +5,23 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-05
+
+### Added
+- Playhead looks: with the Playhead view on, a look bar above the source lane chooses what the strip shows, from
+  Playhead's ready-made looks (Automatic, Waveform only, Spectrogram, Events, Separate lanes, Curves as waveforms,
+  Curves over the waveform, Horizon lanes, Waveform as loud as it sounds, and the music looks) or a pasted look code
+  from the Playhead lab's composer. Looks a sound cannot use (Structure needs music, for example) are disabled for it.
+  The choice is remembered; the legend under the menu says what is drawn.
+- "Tell us if this look helps": a link to a short feedback form in the Playhead repository, with the look filled in.
+- Playhead tools in the Effects tab (with Playhead analysis on): de-harsh and attack and body, from Playhead's effects
+  bench. They run on the selected source sound and add the result to the library, keeping its sample rate, channel
+  count and length, with a short report of what changed.
+
+### Changed
+- The Playhead build in `src/vendor/` adds looks, lanes, a spectrogram layer and the tools (see its README).
+- The Playhead view's legend moved from the canvas to the look bar.
+
 ## [0.6.0] - 2026-11-04
 
 ### Added

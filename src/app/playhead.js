@@ -11,15 +11,33 @@
 import Playhead from '../vendor/playhead-core.mjs';
 import * as D from '../dsp/index.js';
 
-const PREF = 'sfx-workbench.playhead', MAX = 40, LONG_S = 30;
-export const PH = { on: false, version: Playhead.version };
-try { PH.on = localStorage.getItem(PREF) === 'on'; } catch (e) { /* storage blocked: stays off */ }
+const PREF = 'sfx-workbench.playhead', LOOK_PREF = 'sfx-workbench.playhead.look', MAX = 40, LONG_S = 30;
+/** on: the user's switch. look: a look name from Playhead.looks or a look code, for the Playhead view. */
+export const PH = { on: false, version: Playhead.version, look: 'auto' };
+try { PH.on = localStorage.getItem(PREF) === 'on'; PH.look = localStorage.getItem(LOOK_PREF) || 'auto'; } catch (e) { /* storage blocked: off, automatic look */ }
 
 /** Turn Playhead analysis on or off and remember the choice. */
 export function setPlayhead(on) {
   PH.on = !!on;
   try { localStorage.setItem(PREF, PH.on ? 'on' : 'off'); } catch (e) { /* not remembered */ }
 }
+
+/** Choose the look of the Playhead view (a name from phLooks() or a look code) and remember it. */
+export function setLook(look) {
+  PH.look = look || 'auto';
+  try { localStorage.setItem(LOOK_PREF, PH.look); } catch (e) { /* not remembered */ }
+}
+/** The ready-made looks: [name, label, description]. */
+export const phLooks = () => Object.entries(Playhead.looks).map(([k, L]) => [k, L.name, L.desc]);
+/** Whether a look shows something for this document (looks such as Structure need music). */
+export const phLookFits = (doc, look) => !doc || Playhead.lookFits(doc, look);
+/** A look code checked by Playhead: the code as Playhead writes it, or null when nothing in it is understood. */
+export function phCheckCode(code) { const ls = Playhead.parseLook(code); return ls && ls.length ? Playhead.lookCode(ls) : null; }
+/** The code of the current look, for the feedback link. */
+export const phLookCode = () => (Playhead.looks[PH.look] ? Playhead.looks[PH.look].code || 'auto' : PH.look);
+/** The feedback form for looks (an issue form in the Playhead repository), with the current look filled in. */
+export const phFeedbackUrl = () => 'https://github.com/eigensoundlab/playhead/issues/new?template=look-feedback.yml&title='
+  + encodeURIComponent('Look feedback: ' + phLookCode()) + '&look=' + encodeURIComponent(phLookCode()) + '&app=' + encodeURIComponent('SFX Workbench');
 
 /** Curves offered as drives and morph paths, with their names in the UI. */
 export const PH_CURVES = { loudness: 'loudness', activity: 'activity', arousal: 'arousal', harshness: 'harshness', surprise: 'surprise' };
@@ -84,10 +102,35 @@ export function phCurve(doc, name) {
   return c ? { values: D.normalizeCurve(c), rate: doc.curves.rate } : null;
 }
 
-/** Draw a Playhead strip (waveform coloured by harshness, activity as a line, events as ticks) with the app's colours. */
+/** Draw a Playhead strip in the current look with the app's colours. Returns Playhead's { code, legend, items }. */
 export function drawPhStrip(g, doc, W, H, colors) {
-  Playhead.drawStrip(g, doc, { width: W, height: H, theme: { background: null, ...colors } });
+  return Playhead.drawStrip(g, doc, { width: W, height: H, look: PH.look, theme: { background: null, ...colors } });
 }
+/** The legend of the current look for a document, without drawing (for the look bar). */
+export function phLegend(doc) {
+  const ls = Playhead.parseLook(PH.look);
+  return Playhead.describeLook(ls || Playhead.parseLook(doc && (doc.profile === 'sfx' || doc.assetClass === 'sfx') ? 'wave:harshness,line:activity,ticks:events' : 'wave:activity,sections,line:tension,ticks:downbeats+events'), doc);
+}
+
+/* ---------- Playhead's analysis-driven tools ---------- */
+
+/** The tools offered in the Effects tab: Playhead's de-harsh and attack-and-body, with parameters as Workbench specs. */
+export const PH_TOOLS = ['deharsh', 'hpss'];
+export function phToolSpecs() {
+  return Playhead.tools().filter(t => PH_TOOLS.includes(t.id)).map(t => ({
+    id: t.id, name: t.name, desc: t.description,
+    params: t.params.map(p => {
+      const sp = { k: p.id, l: p.label, d: p.id === 'delta' ? false : p.value };
+      if (p.type === 'bool') sp.type = 'bool';
+      else if (p.type === 'select') { sp.type = 'select'; sp.opts = p.options; }
+      else Object.assign(sp, { min: p.min, max: p.max, step: p.step, u: p.id === 'maxCut' ? 'cut' : p.unit === 'dB' ? 'dB' : '' });
+      if (p.id === 'threshold') sp.show = { k: 'mode', in: ['absolute'] };
+      return sp;
+    }),
+  }));
+}
+/** Run a tool on a sound ({ sr, ch }): resolves to { outputs: [{ suffix, sampleRate, channels }], report }. */
+export const phProcess = (snd, toolId, params) => Playhead.process({ sampleRate: snd.sr, channels: snd.ch }, toolId, params, { name: snd.name });
 
 /** Short readable summary of a Playhead document for chips: [label, value, title][]. */
 export function phSummary(doc) {

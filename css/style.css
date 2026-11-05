@@ -318,3 +318,13 @@ body.is-drop::after {
 /* ---- 0.5: resynthesis, version ---- */
 .measure { display: flex; flex-direction: column; gap: 8px; }
 .modes-view { display: block; width: 100%; height: 96px; border: 1px solid var(--line); border-radius: var(--r); }
+/* Playhead look bar (above the source lane, with the Playhead view) */
+.ph-lookbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12.5px; color: var(--muted); }
+.ph-lookbar label { display: inline-flex; align-items: center; gap: 6px; }
+.ph-lookbar select { color: var(--ink); }
+.ph-lookbar input[type="text"] { flex: 1 1 260px; min-width: 0; font: 12px/1.3 var(--f-mono); }
+.ph-legend { flex: 1 1 240px; min-width: 0; font: 11.5px/1.35 var(--f-mono); }
+.ph-feedback { color: var(--accent-text); }
+.ph-tools { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; padding: 12px 14px; }
+.ph-tools h2 { margin: 0; }
+.ph-tools .chips .chip { white-space: normal; overflow-wrap: anywhere; }

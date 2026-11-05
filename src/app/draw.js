@@ -7,6 +7,7 @@ import * as D from '../dsp/index.js';
 import { $ } from './dom.js';
 import { S, cur } from './state.js';
 import { PH, phDoc, phStatus, drawPhStrip } from './playhead.js';
+import { renderLookBar } from './lookbar.js';
 
 export function tokens() {
   const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
@@ -64,15 +65,18 @@ export function drawWave(cv, snd, o) {
   if (!n) { g.fillStyle = T.muted; g.font = '12px "IBM Plex Mono", monospace'; g.fillText(o.empty || 'No audio', 12, H / 2 + 4); return; }
   const view = o.waveOnly || (S.view === 'ph' && !PH.on) ? 'wave' : S.view;
   const doc = view === 'ph' ? phDoc(o.key, snd, o.slot, o.redraw) : null;
-  const key = [o.key, pw, ph, T.wave, T.out, T.line, T.accent, T.danger, view, doc ? 'doc' : ''].join('|');
+  const key = [o.key, pw, ph, T.wave, T.out, T.line, T.accent, T.danger, view, doc ? 'doc' : '', view === 'ph' ? PH.look : ''].join('|');
   if (!cv._c || cv._c.key !== key) {
     const off = document.createElement('canvas'); off.width = pw; off.height = ph;
     if (view === 'spec') drawSpec(off, snd, T);
     else {
       const og = off.getContext('2d'); og.setTransform(dpr, 0, 0, dpr, 0, 0);
       const wc = o.out ? T.out : T.wave, full = hexRgb(wc), faint = hexRgb(T.well).map((v, i) => Math.round(v + (full[i] - v) * 0.3));
-      // calm passages faint, harsh ones in the full waveform colour (red stays reserved for clipping)
-      if (doc) drawPhStrip(og, doc, W, H, { wave: wc, waveLow: faint, waveHigh: full, line: T.accent, tick: T.ink, text: T.ink, rule: T.muted });
+      // calm passages faint, harsh ones in the full waveform colour (red stays reserved for clipping); the spectrogram
+      // uses the same colours as the Spectrum view
+      if (doc) drawPhStrip(og, doc, W, H, { wave: wc, waveLow: faint, waveHigh: full, line: T.accent, tick: T.ink, text: T.ink, rule: T.muted,
+        lane: o.out ? T.wave : T.out, laneDown: T.accent, laneFlat: T.muted, series: [T.ink, T.muted], outline: T.muted, halo: T.well,
+        specRamp: [hexRgb(T.well), hexRgb(T.out), hexRgb(T.accent)] });
       else drawPeaks(og, snd.ch, W, H, wc, T.line, T.danger);
     }
     cv._c = { key, off };
@@ -92,9 +96,8 @@ export function drawWave(cv, snd, o) {
     g.fillRect(Math.round(o.sel.a / n * W), 0, 1.5, H); g.fillRect(Math.round(o.sel.b / n * W) - 1, 0, 1.5, H);
   }
   if (o.cursor > 0 && !o.sel) { g.fillStyle = T.muted; for (let y = 0; y < H; y += 6) g.fillRect(Math.round(o.cursor / n * W), y, 1, 3); }
-  if (view === 'ph') {
-    const st = doc ? '' : phStatus(o.key), note = doc ? (W > 420 ? 'Playhead: activity line, faint calm to strong harsh, events marked below' : 'Playhead')
-      : st === 'error' ? 'Playhead could not analyse this sound' : 'Playhead is analysing…';
+  if (view === 'ph' && !doc) {     // the legend of a drawn look is in the look bar above the source lane
+    const note = phStatus(o.key) === 'error' ? 'Playhead could not analyse this sound' : 'Playhead is analysing…';
     g.font = '10px "IBM Plex Mono", monospace'; g.fillStyle = T.muted; g.textAlign = 'right'; g.fillText(note, W - 6, 12); g.textAlign = 'left';
   }
   if (o.overlay) o.overlay(g, W, H, n, T);
@@ -104,6 +107,7 @@ export function drawSrc(playhead) {
   const s = cur();
   const regions = S.tab === 'sl' && S.slices && s && S.slices.key === s.id + ':' + s.ver ? S.slices.list : null;
   drawWave($('#wave-src'), s, { key: s ? 's' + s.id + ':' + s.ver : '', slot: 'src', redraw: redrawSrc, sel: S.sel, cursor: S.cursor, playhead, regions, empty: 'Import a sound or pick one from the library' });
+  if (playhead == null) renderLookBar();
 }
 const redrawSrc = () => drawSrc(), redrawOut = () => drawOut();
 export function drawOut(playhead) {

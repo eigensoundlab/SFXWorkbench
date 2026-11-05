@@ -96,6 +96,12 @@
           </span>
         </span>
       </div>
+      <div id="ph-lookbar" class="ph-lookbar" hidden>
+        <label title="Playhead's looks: what the strip shows. Your choice is remembered.">Look <select id="ph-look"></select></label>
+        <input type="text" id="ph-code" aria-label="Look code" placeholder="wave:harshness,lane:activity,ticks:events" spellcheck="false" hidden>
+        <span id="ph-legend" class="ph-legend"></span>
+        <a id="ph-feedback" class="ph-feedback" target="_blank" rel="noopener" title="Opens a short form on GitHub with this look filled in">Tell us if this look helps</a>
+      </div>
       <canvas id="wave-src" class="wave" aria-label="Source waveform. Drag to select a region, click to set the play position."></canvas>
 
       <div class="transport">
@@ -181,6 +187,18 @@
       </div>
       <p class="hint">Effects run in order, top to bottom, on the selected sound. Double-click a slider to reset it.</p>
       <div id="chain" class="chain"></div>
+      <div id="ph-tools" class="panel ph-tools" hidden>
+        <h2>Playhead tools</h2>
+        <p class="hint">Processing that follows Playhead's analysis. It runs on the selected source sound (without the effect chain) and adds the result to the library, so you can compare it with the original and add effects to it.</p>
+        <div class="pane-bar">
+          <label>Tool <select id="pht-tool"></select></label>
+          <button class="btn primary" id="pht-run" type="button">Render to the library</button>
+          <span id="pht-status" class="hint" role="status"></span>
+        </div>
+        <p id="pht-desc" class="hint"></p>
+        <div id="pht-params" class="fx-params"></div>
+        <div id="pht-report" class="chips acc-readout"></div>
+      </div>
     </section>
 
     <section class="pane" id="pane-var" role="tabpanel" aria-labelledby="tab-var" hidden>

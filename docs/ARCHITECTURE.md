@@ -101,6 +101,11 @@ analysis if needed and calls `onReady` once when it arrives. Analyses run one at
 slot ('src', 'out', 'acc', 'ref', 'gen', 'drv', 'mix') replaces an older one that has not started, so dragging a
 slider does not queue stale work. Keys follow the audio (sound id and version, output cache key, generator version).
 
+The look of the Playhead view is `PH.look` (a look name or code, remembered): `drawPhStrip` passes it to Playhead's
+`drawStrip`, and `src/app/lookbar.js` offers the looks (`lookFits` disables those a sound cannot use), shows the
+legend and links to the feedback form. Playhead's own tools run through `phProcess` (`src/app/panels/phtools.js`) on
+the source sound and add their outputs to the library.
+
 The DSP never imports Playhead (ESLint checks). The panels turn Playhead results into plain data first: events become
 `[{ at, strength }]` for `renderAccents`, curves become 0..1 arrays for `reactionGen` and the morphs (`morphAmount`).
 With `PH.on` false none of this runs and the panels pass nothing extra, which is what makes the with/without comparison

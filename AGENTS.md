@@ -112,7 +112,8 @@ from the action (`S.gDrive`): `levelCurve()` or a Playhead curve via `normalizeC
 Everything goes through `src/app/playhead.js` (`PH.on`, `phDoc`, `phDocAsync`, `phEvents`, `phCurve`). Keep it optional:
 with `PH.on` false nothing may be analysed and no tool may behave differently. Pass Playhead results to the DSP as plain
 data (events, 0..1 curves); never import the vendor module from `src/dsp`. Select options whose value starts with `ph-`
-are hidden while Playhead is off (see `renderMix`).
+are hidden while Playhead is off (see `renderMix`). Draw Playhead strips only through `drawPhStrip` (Playhead decides the
+look; `PH.look` chooses it), so a new Playhead build changes the view by replacing `src/vendor/playhead-core.mjs`.
 
 **Add a morph mode**
 Add the processor to `MORPH` in `src/dsp/morph.js` (`(A, B, sr, params) => channels`; A and B already share rate and

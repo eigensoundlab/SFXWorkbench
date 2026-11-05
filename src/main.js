@@ -23,6 +23,8 @@ import { initRecorder, recorderBusy, toggleRecord } from './app/recorder.js';
 import { initFolders } from './app/folders.js';
 import { initAccents, refreshAccents, drawAcc } from './app/panels/accents.js';
 import { PH, setPlayhead } from './app/playhead.js';
+import { initLookBar } from './app/lookbar.js';
+import { initPhTools, renderPhTools } from './app/panels/phtools.js';
 
 const TABS = ['fx', 'var', 'mix', 'acc', 'gen', 'sl'];
 
@@ -102,13 +104,15 @@ function syncPlayhead() {
   $('#view-ph').hidden = !PH.on;
   if (!PH.on && S.view === 'ph') setView('wave');
   $('#acc-det-row').hidden = !PH.on;
-  renderMix(); refreshAccents(); syncGenPlayhead(); drawSrc(); drawOut();
+  renderMix(); refreshAccents(); syncGenPlayhead(); renderPhTools(); drawSrc(); drawOut();
 }
 function initPlayhead() {
   $('#ph-version').textContent = PH.version;
+  initLookBar(() => { drawSrc(); drawOut(); });
+  initPhTools();
   $('#ph-on').onchange = e => {
     setPlayhead(e.target.checked); syncPlayhead();
-    toast(PH.on ? 'Playhead analysis on: a Playhead view, events in Accents, curves in Reaction and in morphs, and a check of generated sounds.' : 'Playhead analysis off.');
+    toast(PH.on ? 'Playhead analysis on: a Playhead view with looks, events in Accents, curves in Reaction and morphs, a check of generated sounds, and Playhead tools in Effects.' : 'Playhead analysis off.');
   };
   syncPlayhead();
 }
