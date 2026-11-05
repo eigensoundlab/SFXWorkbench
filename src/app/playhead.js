@@ -114,8 +114,9 @@ export function phLegend(doc) {
 
 /* ---------- Playhead's analysis-driven tools ---------- */
 
-/** The tools offered in the Effects tab: Playhead's de-harsh and attack-and-body, with parameters as Workbench specs. */
-export const PH_TOOLS = ['deharsh', 'hpss'];
+/** The tools offered in the Effects tab, with parameters as Workbench specs: de-harsh and attack and body, and three that
+ *  no EQ can copy because they follow the events (reverb on the tails, drive the hits, ring time). */
+export const PH_TOOLS = ['deharsh', 'hpss', 'tailverb', 'drive', 'ring'];
 export function phToolSpecs() {
   return Playhead.tools().filter(t => PH_TOOLS.includes(t.id)).map(t => ({
     id: t.id, name: t.name, desc: t.description,
@@ -123,7 +124,7 @@ export function phToolSpecs() {
       const sp = { k: p.id, l: p.label, d: p.id === 'delta' ? false : p.value };
       if (p.type === 'bool') sp.type = 'bool';
       else if (p.type === 'select') { sp.type = 'select'; sp.opts = p.options; }
-      else Object.assign(sp, { min: p.min, max: p.max, step: p.step, u: p.id === 'maxCut' ? 'cut' : p.unit === 'dB' ? 'dB' : '' });
+      else Object.assign(sp, { min: p.min, max: p.max, step: p.step, u: p.id === 'maxCut' ? 'cut' : ['dB', 's', 'Hz', '%', 'ms'].includes(p.unit) ? p.unit : '' });
       if (p.id === 'threshold') sp.show = { k: 'mode', in: ['absolute'] };
       return sp;
     }),

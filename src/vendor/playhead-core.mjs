@@ -1983,6 +1983,16 @@ function quant(arr, p) {
 function meanF(arr) { let s = 0, k = 0; for (const v of arr) if (isFinite(v)) { s += v; k++; } return k ? s / k : NaN; }
 function rng(seed) { let a = seed >>> 0; return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 // values at arbitrary times -> one value per analysis frame (linear; NaN stays NaN)
+// many short values (one per short frame) -> analysis frames, keeping the largest in each frame
+function toFramesMax(vals, times, F) {
+  const o = new Float32Array(F.nF).fill(NaN);
+  for (let i = 0; i < vals.length; i++) {
+    const v = vals[i]; if (!isFinite(v)) continue;
+    const m = Math.min(F.nF - 1, Math.max(0, Math.floor(times[i] / F.dt)));
+    if (!(o[m] >= v)) o[m] = v;
+  }
+  return o;
+}
 function toFrames(vals, times, F) {
   const o = new Float32Array(F.nF).fill(NaN), n = vals.length;
   if (!n) return o;
@@ -2032,10 +2042,10 @@ function shortStft(x, sr, dur) {
   const T = Math.max(1, Math.floor((x.length - N) / H) + 1), rate = sr / H, binHz = sr / N;
   const blkF = Math.max(1, Math.round(DESC.kurtStep * rate)), nBlk = Math.ceil(T / blkF);
   const S1 = new Float64Array(nBlk * (half + 1)), S2 = new Float64Array(nBlk * (half + 1)), cnt = new Uint16Array(nBlk);
-  const env = DESC.envBands.map(() => new Float32Array(T)), bandOf = new Int8Array(half + 1).fill(-1);
+  const env = DESC.envBands.map(() => new Float32Array(T)), bandOf = new Int8Array(half + 1).fill(-1), pw = new Float32Array(T);
   for (let k = 1; k <= half; k++) { const f = k * binHz; DESC.envBands.forEach(([lo, hi], b) => { if (f >= lo && f < hi) bandOf[k] = b; }); }
   const re = new Float64Array(N), im = new Float64Array(N);
-  const acc = (t, k, p) => { const bi = Math.floor(t / blkF), o = bi * (half + 1); S1[o + k] += p; S2[o + k] += p * p; if (bandOf[k] >= 0) env[bandOf[k]][t] += p; };
+  const acc = (t, k, p) => { const bi = Math.floor(t / blkF), o = bi * (half + 1); S1[o + k] += p; S2[o + k] += p * p; pw[t] += p; if (bandOf[k] >= 0) env[bandOf[k]][t] += p; };
   // two real frames per complex FFT: z = a + i b, A[k] = (Z[k] + conj Z[N-k]) / 2, B[k] = (Z[k] - conj Z[N-k]) / 2i
   for (let t = 0; t < T; t += 2) {
     const tb = t + 1 < T ? t + 1 : -1, sa = t * H, sb = tb >= 0 ? tb * H : 0;
@@ -2048,13 +2058,16 @@ function shortStft(x, sr, dur) {
       if (tb >= 0) { const br = (zi + yi) / 2, bim = (yr - zr) / 2; acc(tb, k, br * br + bim * bim); }
     }
   }
-  return { N, H, half, T, rate, binHz, blkF, nBlk, S1, S2, cnt, env };
+  return { N, H, half, T, rate, binHz, blkF, nBlk, S1, S2, cnt, env, pw };
 }
 function kurtosisOf(st, F, gate, dur) {
-  const { half, binHz, blkF, nBlk, S1, S2, cnt, rate } = st;
+  const { half, binHz, blkF, nBlk, S1, S2, cnt, rate, pw, T, N, H } = st;
   const win = Math.max(1, Math.round((dur <= 6 ? DESC.kurtWinShort : DESC.kurtWin) * rate / blkF));
   const bands = DESC.kurtBands.map(([lo, hi]) => [Math.max(1, Math.ceil(lo / binHz)), Math.min(half, Math.floor(hi / binHz))]);
   const times = [], kmax = [], khz = [], kall = [];
+  // where the impulses are: each window's kurtosis given to its frames in proportion to their power, so a curve drawn
+  // from it rises at an impulse, not half a window before it (the window values stay the statistic for summaries)
+  const loc = new Float32Array(T).fill(NaN);
   const a1 = new Float64Array(half + 1), a2 = new Float64Array(half + 1);
   let maxPow = 0; for (let i = 0; i < S1.length; i++) if (S1[i] > maxPow) maxPow = S1[i];
   const bandK = (A1, A2, M) => {
@@ -2080,7 +2093,13 @@ function kurtosisOf(st, F, gate, dur) {
     let best = NaN, bh = NaN;
     r.bands.forEach((b, i) => { if (b.share >= 0.02 && isFinite(b.K) && (!isFinite(best) || b.K > best)) { best = b.K; bh = Math.sqrt(DESC.kurtBands[i][0] * DESC.kurtBands[i][1]); } });
     kmax.push(best); khz.push(bh); kall.push(r.all);
+    if (isFinite(best)) {
+      const f0 = b0 * blkF, f1 = Math.min(T, b1 * blkF); let pmax = 0;
+      for (let f = f0; f < f1; f++) if (pw[f] > pmax) pmax = pw[f];
+      for (let f = f0; f < f1; f++) { const v = best > 0 && pmax > 0 ? best * pw[f] / pmax : best; if (!(loc[f] >= v)) loc[f] = v; }
+    }
   }
+  const locT = Array.from({ length: T }, (_, f) => (f * H + N / 2) / (rate * H));
   // whole file
   a1.fill(0); a2.fill(0); let M = 0;
   for (let b = 0; b < nBlk; b++) { const o = b * (half + 1); M += cnt[b]; for (let k = 1; k <= half; k++) { a1[k] += S1[o + k]; a2[k] += S2[o + k]; } }
@@ -2088,7 +2107,7 @@ function kurtosisOf(st, F, gate, dur) {
   let wb = -1; whole.bands.forEach((b, i) => { if (b.share >= 0.02 && isFinite(b.K) && (wb < 0 || b.K > whole.bands[wb].K)) wb = i; });
   const Mw = win * blkF;
   return {
-    curve: toFrames(kmax, times, F), hz: toFrames(khz, times, F), all: toFrames(kall, times, F),
+    curve: toFrames(kmax, times, F), hz: toFrames(khz, times, F), all: toFrames(kall, times, F), local: toFramesMax(loc, locT, F),
     sig: 1.645 * 2 / Math.sqrt(Mw),
     summary: { K: whole.all, Kmax: wb >= 0 ? whole.bands[wb].K : NaN, band: wb >= 0 ? DESC.kurtBands[wb] : null, bands: whole.bands.map(b => b.K) }
   };
@@ -2597,7 +2616,7 @@ async function describe(F, buf) {
   const rec = recurrenceOf(F, gate, dur); lap("recurrence"); await tick(); t0 = now();
   const dec = decaysOf(F, events, gate); lap("decay");
   const D = {
-    curves: { kurt: kurt.curve, kurtHz: kurt.hz, repHz: rep.hz, repProm: rep.prom, ht: toFrames(htV, htT, F), vel: mot.vel, reshape: mot.reshape, cpp: cp.cpp, pci: cp.pci, arrow: arr.curve, surprisal: inf.surprisal, pir: inf.pir, info: inf.info, recDensity: rec.density, lam: rec.lam },
+    curves: { kurt: kurt.curve, kurtLocal: kurt.local, kurtHz: kurt.hz, repHz: rep.hz, repProm: rep.prom, ht: toFrames(htV, htT, F), vel: mot.vel, reshape: mot.reshape, cpp: cp.cpp, pci: cp.pci, arrow: arr.curve, surprisal: inf.surprisal, pir: inf.pir, info: inf.info, recDensity: rec.density, lam: rec.lam },
     events, decays: dec.decays, kurtSig: kurt.sig, timing: T,
     summary: { kurtosis: kurt.summary, repetition: rep.summary, events: evSum, motion: mot.summary, periodicity: cp.summary, arrow: arr.summary, info: inf.summary, recurrence: rec.summary, decay: dec.summary }
   };
@@ -3059,6 +3078,112 @@ function encodeWav(buf, float32) {
   return ab;
 }
 
+
+/* ---------- 8. Event-masked tools: processing that follows the sound's events ----------
+   An EQ, dynamic or not, can only turn existing frequencies up or down. These three do what it cannot: add a reverb
+   tail that starts after each hit's peak (new energy, smeared in time), saturate only the hits (new harmonics), and
+   change how long each event rings (its decay, relative to its own peak). The events come from the sound-object
+   analysis (start, peak, end of decay). */
+function eventsOf(an, sr, n) {
+  const ev = (an.X && an.X.events) || [];
+  return ev.map(e => ({ a: Math.max(0, Math.round(e.t0 * sr)), p: Math.max(0, Math.round(e.peakT * sr)), e: Math.min(n, Math.round(Math.max(e.tEnd || e.t1, e.t1) * sr)) }))
+    .filter(e => e.e > e.a).sort((x, y) => x.a - y.a);
+}
+// a 0..1 mask with linear ramps of r samples; spans: [[start, end], ...]
+function spanMask(n, spans, r) {
+  const m = new Float32Array(n);
+  for (const [a, b] of spans) {
+    const s0 = Math.max(0, a), s1 = Math.min(n, b); if (s1 <= s0) continue;
+    for (let i = Math.max(0, s0 - r); i < Math.min(n, s1 + r); i++) { const u = i < s0 ? 1 - (s0 - i) / r : i >= s1 ? 1 - (i - s1 + 1) / r : 1; if (u > m[i]) m[i] = u; }
+  }
+  return m;
+}
+// stereo-friendly reverb: four damped combs and two all-passes per channel (Schroeder), comb lengths offset per channel
+function reverb(x, sr, t60, toneHz, chan) {
+  const base = [1557, 1617, 1491, 1422].map(l => Math.round((l + chan * 23) * sr / 44100)), ap = [225, 556].map(l => Math.round((l + chan * 17) * sr / 44100));
+  const n = x.length, y = new Float32Array(n), damp = Math.exp(-2 * Math.PI * toneHz / sr);
+  for (const L of base) {
+    const g = Math.pow(10, -3 * L / (t60 * sr)), buf = new Float32Array(L); let idx = 0, lp = 0;
+    for (let i = 0; i < n; i++) { const out = buf[idx]; lp = out * (1 - damp) + lp * damp; buf[idx] = x[i] + lp * g; idx = idx + 1 === L ? 0 : idx + 1; y[i] += out / base.length; }
+  }
+  for (const L of ap) {
+    const buf = new Float32Array(L); let idx = 0;
+    for (let i = 0; i < n; i++) { const b = buf[idx], v = y[i] + 0.5 * b; buf[idx] = v; y[i] = b - 0.5 * v; idx = idx + 1 === L ? 0 : idx + 1; }
+  }
+  return y;
+}
+async function tailVerb(src, an, opt) {
+  const sr = src.sampleRate, ch = chansOf(src), n = ch[0].length, ev = eventsOf(an, sr, n);
+  if (!ev.length) return { outputs: [{ suffix: "tailverb", buf: mkBuf(sr, ch) }], report: ["No events found: nothing was sent to the reverb"] };
+  const hold = Math.round(opt.holdMs / 1000 * sr), r = Math.round(0.02 * sr);
+  // send: each event from its peak (plus the hold) to the end of its decay; duck: the wet signal leaves each attack dry
+  const send = spanMask(n, ev.map(e => [e.p + hold, e.e]), r), duck = opt.dryAttacks ? spanMask(n, ev.map(e => [e.a, e.p + Math.round(0.01 * sr)]), Math.round(0.005 * sr)) : null;
+  const wetG = undb(opt.wetDb), tail = Math.round(Math.min(6, opt.t60) * sr * 0.6), len = n + tail;
+  const outs = ch.map((x, c) => {
+    const xin = new Float32Array(len); for (let i = 0; i < n; i++) xin[i] = x[i] * send[i];
+    const w = reverb(xin, sr, opt.t60, opt.toneHz, c), o = new Float32Array(len);
+    for (let i = 0; i < len; i++) o[i] = (i < n ? x[i] : 0) + w[i] * wetG * (duck && i < n ? 1 - duck[i] : 1);
+    return o;
+  });
+  // fade the added tail out over its last 30%, so the file ends cleanly
+  const f0 = n + Math.round(tail * 0.7); for (const o of outs) for (let i = f0; i < len; i++) o[i] *= 1 - (i - f0) / (len - f0);
+  let on = 0; for (let i = 0; i < n; i++) on += send[i] > 0.5 ? 1 : 0;
+  const report = ["Reverb sent from " + ev.length + " event tail" + (ev.length === 1 ? "" : "s") + ", " + Math.round(100 * on / n) + "% of the time" + (opt.dryAttacks ? "; attacks kept dry" : ""), "Decay " + opt.t60 + " s, " + (len - n > 0 ? (tail / sr).toFixed(1) + " s added at the end" : "")];
+  finish(src, outs, "peak", report);
+  return { outputs: [{ suffix: "tailverb", buf: mkBuf(sr, outs) }], report };
+}
+async function driveHits(src, an, opt) {
+  const sr = src.sampleRate, ch = chansOf(src), n = ch[0].length, ev = eventsOf(an, sr, n);
+  if (!ev.length) return { outputs: [{ suffix: "drive", buf: mkBuf(sr, ch) }], report: ["No events found: nothing was driven"] };
+  const at = Math.round(0.03 * sr), spans = ev.map(e => opt.where === "attack" ? [e.a, e.p + at] : opt.where === "body" ? [e.p + at, e.e] : [e.a, e.e]);
+  const m = spanMask(n, spans, Math.round(0.005 * sr)), k = undb(opt.driveDb), mix = opt.mix / 100, pk = Math.max(1e-6, peakOf(ch));
+  // the saturated signal is brought back to the dry signal's level every few milliseconds, so what changes is the
+  // waveform's shape (new harmonics), not its loudness contour (which a dynamic EQ or a compressor could copy)
+  const W = Math.max(16, Math.round(0.004 * sr));
+  const outs = ch.map(x => {
+    const d = new Float32Array(n); for (let i = 0; i < n; i++) d[i] = Math.tanh(k * x[i] / pk) * pk;
+    const cx = new Float64Array(n + 1), cd = new Float64Array(n + 1);
+    for (let i = 0; i < n; i++) { cx[i + 1] = cx[i] + x[i] * x[i]; cd[i + 1] = cd[i] + d[i] * d[i]; }
+    const o = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = Math.max(0, i - W), b = Math.min(n, i + W), ex = cx[b] - cx[a], ed = cd[b] - cd[a], g = ed > 1e-20 ? Math.sqrt(ex / ed) : 0, w = mix * m[i];
+      o[i] = x[i] * (1 - w) + d[i] * g * w;
+    }
+    return o;
+  });
+  let on = 0; for (let i = 0; i < n; i++) on += m[i] > 0.5 ? 1 : 0;
+  const report = ["Saturated the " + (opt.where === "attack" ? "attacks" : opt.where === "body" ? "bodies" : "whole events") + " of " + ev.length + " event" + (ev.length === 1 ? "" : "s") + " (" + Math.round(100 * on / n) + "% of the time)", "Drive +" + opt.driveDb + " dB, mix " + opt.mix + "%"];
+  finish(src, outs, opt.match ? "loudness" : "peak", report);
+  return { outputs: [{ suffix: "drive", buf: mkBuf(sr, outs) }], report };
+}
+async function ringTime(src, an, opt, onProgress) {
+  const sr = src.sampleRate, ch = chansOf(src), n = ch[0].length, ev = eventsOf(an, sr, n);
+  if (!ev.length) return { outputs: [{ suffix: "ring", buf: mkBuf(sr, ch) }], report: ["No events found: nothing was changed"] };
+  const N = frameN(sr, src.duration), { M, nF, bins, H } = await stftMagnitudes(ch, sr, N), binHz = sr / N, fr = t => Math.round(t / H);
+  // each event's decay: from its peak to the next event's start (or the end of the file); the reference is the
+  // loudest frame of each bin around the peak, and every later frame is raised or lowered so the decay stretches
+  const ref = new Float32Array(nF * bins).fill(0), owner = new Int32Array(nF).fill(-1);
+  ev.forEach((e, i) => {
+    const p0 = Math.max(0, fr(e.p) - 1), p1 = Math.min(nF, fr(e.p) + 3), end = Math.min(nF, i + 1 < ev.length ? fr(ev[i + 1].a) : nF);
+    const r = new Float32Array(bins); for (let f = p0; f < p1; f++) for (let k = 0; k < bins; k++) r[k] = Math.max(r[k], M[f * bins + k]);
+    for (let f = fr(e.p) + 1; f < end; f++) { owner[f] = i; ref.set(r, f * bins); }
+  });
+  const maxUp = undb(opt.maxBoostDb), floor = undb(-70);
+  let gSum = 0, gN = 0;
+  const outs = await stftApply(ch, sr, N, (f, t, mag, g) => {
+    if (f >= nF || owner[f] < 0) return;
+    for (let k = 0; k < bins; k++) {
+      const R = ref[f * bins + k], m = M[f * bins + k]; if (R <= 0 || m <= R * floor) continue;
+      const ratio = opt.ratio * Math.pow(Math.max(50, k * binHz) / 1000, opt.tilt), e = 1 / ratio - 1;
+      const u = Math.min(1, m / R), v = Math.min(maxUp, Math.max(1 / maxUp, Math.pow(u, e)));
+      g[k] = v; gSum += Math.log10(v) * 20; gN++;
+    }
+  }, onProgress);
+  const report = ["Decay of " + ev.length + " event" + (ev.length === 1 ? "" : "s") + " ×" + opt.ratio + (opt.tilt ? ", high partials ×" + rnd(opt.ratio * Math.pow(8, opt.tilt), 2) + " at 8 kHz" : "") + (opt.ratio > 1 ? " (rings longer)" : opt.ratio < 1 ? " (damped)" : ""), "Average change in the tails " + (gN ? (gSum / gN >= 0 ? "+" : "") + (gSum / gN).toFixed(1) : "0") + " dB"];
+  finish(src, outs, opt.match ? "peak" : "none", report);
+  return { outputs: [{ suffix: "ring", buf: mkBuf(sr, outs) }], report };
+}
+
 const TOOLS = [
   { id: "cleanup", name: "Clean up for export", kind: "Game audio",
     desc: "Fixes what the asset checks find: removes DC offset, rebuilds clipped peaks, trims silence, adds fades where the file clicks or the tail was cut, folds identical channels to mono, and normalises the peak.",
@@ -3088,7 +3213,24 @@ const TOOLS = [
   { id: "vars", name: "Variations", kind: "Game audio",
     desc: "Makes copies that differ the way repeated game sounds should: random layer balance, reordered grains inside iterative events, and a small pitch change.",
     params: [{ id: "count", label: "Copies", min: 2, max: 6, step: 1, value: 4 }, { id: "layerDb", label: "Layer spread", min: 0, max: 6, step: 0.5, value: 3, unit: "dB" }, { id: "pitch", label: "Pitch spread", min: 0, max: 3, step: 0.1, value: 1, unit: "st" }, { id: "grains", label: "Reorder grains", type: "bool", value: true }],
-    run: variations }
+    run: variations },
+  { id: "tailverb", name: "Reverb on the tails", kind: "Sound design",
+    desc: "Sends only the tails of the events into a reverb: each hit from its peak to the end of its decay, so the attack stays dry and punchy and the tail blooms. An EQ cannot do this: it adds new energy after the sound and smears it in time.",
+    params: [{ id: "wetDb", label: "Reverb level", min: -30, max: 0, step: 1, value: -8, unit: "dB" }, { id: "t60", label: "Decay", min: 0.3, max: 6, step: 0.1, value: 1.6, unit: "s" },
+      { id: "holdMs", label: "Start after the peak", min: 0, max: 300, step: 5, value: 30, unit: "ms" }, { id: "toneHz", label: "Tone", min: 1500, max: 16000, step: 500, value: 6000, unit: "Hz" },
+      { id: "dryAttacks", label: "Keep the attacks dry", type: "bool", value: true }],
+    run: tailVerb },
+  { id: "drive", name: "Drive the hits", kind: "Sound design",
+    desc: "Saturates only the events (their attacks, their bodies, or all of them) and leaves the rest clean. The saturated part is held at the original level, so what changes is the harmonics, which no EQ can add, not the loudness.",
+    params: [{ id: "where", label: "Where", type: "select", value: "attack", options: [["attack", "Attacks"], ["body", "Bodies (after the peak)"], ["whole", "Whole events"]] },
+      { id: "driveDb", label: "Drive", min: 0, max: 30, step: 1, value: 18, unit: "dB" }, { id: "mix", label: "Mix", min: 0, max: 100, step: 5, value: 70, unit: "%" },
+      { id: "match", label: "Match loudness", type: "bool", value: true }],
+    run: driveHits },
+  { id: "ring", name: "Ring time", kind: "Sound design",
+    desc: "Changes how long each event rings, relative to its own peak: longer for metal and glass, shorter for wood and cardboard. Higher partials can ring longer or shorter than lower ones, which moves the material read by the decay descriptor (N9). An EQ sets the same gain at every level; this sets it by how far each partial has decayed since its event's peak.",
+    params: [{ id: "ratio", label: "Ring time", min: 0.25, max: 4, step: 0.05, value: 2 }, { id: "tilt", label: "High partials", min: -0.5, max: 0.5, step: 0.05, value: 0 },
+      { id: "maxBoostDb", label: "Largest lift", min: 6, max: 36, step: 1, value: 18, unit: "dB" }, { id: "match", label: "Keep the peak", type: "bool", value: true }],
+    run: ringTime }
 ];
 
 /* ---------- comparison with a static EQ ----------
@@ -3177,7 +3319,7 @@ function zipStore(files) {
   return out;
 }
 
-const api = { TOOLS, eqExplained, encodeWav, zipStore, crc32, mkBuf, chansOf, resample, lufsOf, stftApply, stftMagnitudes, _stftMag: stftMagnitudes, cleanup, deharsh, layerMix, hpss, tensionShape, loopMaker, variations };
+const api = { TOOLS, eqExplained, encodeWav, zipStore, crc32, mkBuf, chansOf, resample, lufsOf, stftApply, stftMagnitudes, _stftMag: stftMagnitudes, cleanup, deharsh, layerMix, hpss, tensionShape, loopMaker, variations, tailVerb, driveHits, ringTime };
 if (typeof module !== "undefined" && module.exports) module.exports = api;
 root.WLFX = api;
 })(__ph);
@@ -3352,10 +3494,13 @@ async function build(F, buf, opts, t0, prog) {
     const D = await PHD.describe(F, buf);
     prog(0.9);
     Object.assign(doc.curves, {
-      n1Kurtosis: resample(D.curves.kurt, F, cols, null, "max"), n2RepetitionHz: resample(D.curves.repHz, F, cols, null), n4Velocity: resample(D.curves.vel, F, cols, null),
+      n1Kurtosis: resample(D.curves.kurtLocal || D.curves.kurt, F, cols, null, "max"), n2RepetitionHz: resample(D.curves.repHz, F, cols, null), n4Velocity: resample(D.curves.vel, F, cols, null),
       n5Cpp: resample(D.curves.cpp, F, cols, null), n5Coherence: resample(D.curves.pci, F, cols, null), n6Arrow: resample(D.curves.arrow, F, cols, null),
       n7Surprisal: resample(D.curves.surprisal, F, cols, null), n8Recurrence: resample(D.curves.recDensity, F, cols, null)
     });
+    // onset strength (spectral flux, the beat tracker's input): where the hits and attacks are, scaled to its 99th percentile
+    const Rr = WL.rhythmOf(F), envS = Array.from(Rr.env).filter(v => v > 0).sort((a, b) => a - b), envTop = envS.length ? envS[Math.floor(0.99 * (envS.length - 1))] || 1 : 1;
+    doc.curves.onsetStrength = resample(Rr.env.map(v => Math.min(1, v / envTop)), F, cols, null, "max");
     const s = D.summary;
     doc.descriptors = plain({
       kurtosis: { K: s.kurtosis.K, Kmax: s.kurtosis.Kmax, band: s.kurtosis.band },
@@ -3468,7 +3613,7 @@ const DEFAULT_THEME = {
 const SERIES = ["#2f9378", "#7e60c4"];
 const CURVE_LABELS = {
   loudness: "loudness", activity: "activity", arousal: "arousal", harshness: "harshness", tension: "tension", harmonicTension: "harmonic tension",
-  surprise: "novelty (spectral surprise)", lufs: "loudness (LUFS)", structureNovelty: "structural change", localPulse: "local pulse",
+  surprise: "novelty (spectral surprise)", lufs: "loudness (LUFS)", structureNovelty: "structural change", localPulse: "local pulse", onsetStrength: "onset strength (hits)",
   n1Kurtosis: "impulsiveness", n2RepetitionHz: "repetition rate", n4Velocity: "spectral motion", n5Cpp: "periodicity", n5Coherence: "phase coherence",
   n6Arrow: "time arrow", n7Surprisal: "surprisal", n8Recurrence: "recurrence"
 };
@@ -3486,6 +3631,8 @@ const LOOKS = {
   overlay: { name: "Curves over the waveform", desc: "Activity and harshness drawn like waveforms on top of the waveform itself, to compare their shapes directly.", code: "form:overlay,shape:mirror,wave,lane:activity,lane:harshness" },
   horizon: { name: "Horizon lanes", desc: "Loudness, activity and harshness as horizon charts: compact lanes that keep detail at small heights.", code: "shape:horizon,wave,lane:loudness,lane:activity,lane:harshness" },
   specstructure: { name: "Spectrogram and structure", desc: "The spectrogram with sections, structural change and downbeats.", code: "spec,sections,lane:structureNovelty~signed,ticks:downbeats" },
+  overview: { name: "Music overview", desc: "Curves only, overlaid and mirrored like a waveform: local pulse, activity and recurrence, with sections, bar lines and novelty marks.", code: "form:overlay,shape:mirror,sections,lane:localPulse,lane:activity,lane:n8Recurrence,ticks:downbeats+novelty" },
+  hits: { name: "Hits and pulse", desc: "The waveform with onset strength (where the hits are) and the local pulse as lanes, beats and bar lines.", code: "wave,lane:onsetStrength,lane:localPulse,ticks:beats+downbeats" },
   sculpted: { name: "Waveform as loud as it sounds", desc: "The waveform's envelope follows perceived loudness (a dB-like scale) while its detail stays; colour shows harshness, with the ordinary peak outline for comparison.", code: "sculpt:loudness,wave:harshness,outline,ticks:events+novelty" }
 };
 const isSfxDoc = doc => doc.profile === "sfx" || doc.assetClass === "sfx";
@@ -3496,7 +3643,7 @@ function legacyLayers(doc, opts) {
   if (opts.sections !== false) L.push({ type: "sections" });
   L.push({ type: "line", curve: opts.curve || (sfx ? "activity" : "tension"), range: opts.lineRange });
   const of = []; if (opts.beats !== false) of.push("downbeats"); if (opts.events !== false) of.push("events");
-  L.push({ type: "ticks", of });
+  L.push({ type: "ticks", of, small: true });
   return L;
 }
 /** Look code -> layers. Accepts a look name ("structure") or a code; unknown parts are skipped. */
@@ -3535,13 +3682,17 @@ function describeLook(layers, doc) {
     if (l.type === "wave") parts.push(l.colour && has(l.colour) ? "colour: " + lab(l.colour) : "waveform");
     else if (l.type === "spec") parts.push(!doc || doc.spectrum ? "spectrogram (mel, low at the bottom)" : "spectrogram (not in this analysis)");
     else if (l.type === "outline") parts.push("outline: peak waveform");
-    else if (l.type === "sculpt") parts.push(has(l.curve) ? "height: " + lab(l.curve) : "height: " + lab(l.curve) + " (not in this analysis)");
+    else if (l.type === "sculpt") parts.push(!(layers || []).some(x => x.type === "wave") ? "height: " + lab(l.curve) + " (shapes the waveform; add it to see)" : has(l.curve) ? "height: " + lab(l.curve) : "height: " + lab(l.curve) + " (not in this analysis)");
     else if (l.type === "line" && has(l.curve)) parts.push("line: " + lab(l.curve));
-    else if (l.type === "lane") parts.push((form === "overlay" ? "over the waveform: " : "lane: ") + lab(l.curve) + (has(l.curve) ? (l.signed ? " (up: entry, down: drop or break, centred: same level)" : "") : " (not in this analysis)"));
+    else if (l.type === "lane") parts.push((form === "overlay" ? ((layers || []).some(x => x.type === "wave" || x.type === "spec") ? "over the waveform: " : "overlaid: ") : "lane: ") + lab(l.curve) + (has(l.curve) ? (l.signed ? " (up: entry, down: drop or break, centred: same level)" : "") : " (not in this analysis)"));
     else if (l.type === "sections" && (!doc || doc.sections)) parts.push("letters: sections");
     else if (l.type === "ticks" && l.of) {
-      const ok = r => !doc || (r === "events" ? !!doc.events : r === "onsets" ? !!doc.onsets : r === "novelty" ? !!(doc.noveltyTicks && doc.noveltyTicks.length) : !!(doc.rhythm && doc.rhythm.reliable));
-      const of = l.of.filter(ok); if (of.length) parts.push("marks: " + of.join(", "));
+      const rh = r => r === "beats" || r === "downbeats";
+      const ok = r => !doc || (r === "events" ? !!doc.events : r === "onsets" ? !!doc.onsets : r === "novelty" ? !!(doc.noveltyTicks && doc.noveltyTicks.length) : !!doc.rhythm);
+      const of = l.of.filter(ok).map(r => r === "downbeats" ? "bar lines" : r);
+      if (of.length) parts.push("marks: " + of.join(", ") + (doc && doc.rhythm && !doc.rhythm.reliable && l.of.some(rh) ? " (no steady beat: beats faint)" : ""));
+      const missing = l.of.filter(r => !ok(r)).map(r => r === "downbeats" ? "bar lines" : r);
+      if (missing.length) parts.push(missing.join(", ") + ": not in this analysis" + (missing.some(m => m === "beats" || m === "bar lines") ? " (music only)" : ""));
     }
   }
   if (lanes.length && shape !== "base") parts.push(shape === "mirror" ? "curves mirrored like a waveform" : shape === "horizon" ? "horizon charts (darker = higher)" : "curves as lines");
@@ -3784,12 +3935,17 @@ function drawStrip(ctx, doc, opts) {
       }
     },
     ticks(l) {
-      const of = l.of || [], Hm = mainH || H, r = doc.rhythm, ok = r && r.reliable;
+      const of = l.of || [], Hm = mainH || H, r = doc.rhythm, ok = r && r.reliable, fade = ok ? 1 : 0.35;
       ctx.fillStyle = th.tick; ctx.strokeStyle = th.tick; ctx.lineWidth = 1;
-      const vl = (ts, h, alpha) => { if (alpha != null) ctx.globalAlpha = alpha; for (const t of ts) { if (t < t0 || t > t1) continue; const x = Math.round(xOf(t)) + 0.5; ctx.beginPath(); ctx.moveTo(x, Hm - h); ctx.lineTo(x, Hm); ctx.stroke(); } if (alpha != null) ctx.globalAlpha = 1; };
-      if (of.includes("beats") && ok) vl(r.beats, 3, 0.5);
+      const vl = (ts, h, alpha, y0) => { if (alpha != null) ctx.globalAlpha = alpha; for (const t of ts) { if (t < t0 || t > t1) continue; const x = Math.round(xOf(t)) + 0.5; ctx.beginPath(); ctx.moveTo(x, y0 == null ? Hm - h : y0); ctx.lineTo(x, Hm); ctx.stroke(); } if (alpha != null) ctx.globalAlpha = 1; };
+      // the default look keeps its small downbeat ticks; other looks draw beats and faint bar lines through the strip
+      const legacyTicks = l.small === true;
+      if (of.includes("beats") && r) vl(r.beats, Math.max(3, Math.round(Hm * 0.06)), 0.55 * fade);
       if (of.includes("onsets") && doc.onsets) vl(doc.onsets, 3, 0.6);
-      if (of.includes("downbeats") && ok) vl(r.downbeats, 4);
+      if (of.includes("downbeats") && r) {
+        if (legacyTicks) { if (ok) vl(r.downbeats, 4); }
+        else { vl(r.downbeats, 0, 0.2 * fade, 0); vl(r.downbeats, Math.max(4, Math.round(Hm * 0.1)), fade); }
+      }
       if (of.includes("novelty") && doc.noveltyTicks) for (const t of doc.noveltyTicks) {     // from the top edge, like the lab's novelty ticks
         if (t < t0 || t > t1) continue; const x = xOf(t);
         ctx.beginPath(); ctx.moveTo(x, 1); ctx.lineTo(x - 3, 7); ctx.lineTo(x + 3, 7); ctx.closePath(); ctx.fill();

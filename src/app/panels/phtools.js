@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Playhead tools in the Effects tab, shown while Playhead analysis is on: Playhead's de-harsh and attack-and-body run
- * on the selected source sound (without the effect chain) and the result joins the library, so it can be compared
- * with the original by ear and in the Playhead view, and processed further. The tools keep the sample rate, channel
- * count and length; the bit depth of the new sound is the source's.
+ * Playhead tools in the Effects tab, shown while Playhead analysis is on: Playhead's tools (de-harsh, attack and body,
+ * reverb on the tails, drive the hits, ring time) run on the selected source sound (without the effect chain) and the
+ * result joins the library, so it can be compared with the original by ear and in the Playhead view, and processed
+ * further. The tools keep the sample rate and channel count; all but reverb on the tails keep the length (it adds the
+ * tail). The bit depth of the new sound is the source's.
  */
 import { $, h, toast } from '../dom.js';
 import { S, cur, newSound } from '../state.js';

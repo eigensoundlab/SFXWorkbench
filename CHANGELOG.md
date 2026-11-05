@@ -5,6 +5,19 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-05
+
+### Added
+- Three Playhead tools that no EQ can copy, because they follow the sound's events: reverb on the tails (a reverb fed
+  only from each hit's peak to the end of its decay, so the attacks stay dry; it adds the tail at the end), drive the
+  hits (saturation on the attacks, bodies or whole events, held at the original level so only the harmonics change)
+  and ring time (each event rings longer or shorter relative to its own peak, optionally more in the high partials).
+
+### Changed
+- Newer Playhead build: the impulsiveness curve now peaks at the impulses instead of rising half a window before them;
+  onset strength is a new curve; beats and bar lines are easier to see in the Playhead view; two music looks (Music
+  overview, Hits and pulse), disabled for sound effects.
+
 ## [0.7.0] - 2026-11-05
 
 ### Added

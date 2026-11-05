@@ -53,7 +53,7 @@ test('looks: ready-made looks, codes checked by Playhead, looks that fit a sound
 test('Playhead tools: specs fit the Workbench controls; de-harsh keeps rate, channels and length', async () => {
   const { phToolSpecs, phProcess } = await import('../src/app/playhead.js');
   const specs = phToolSpecs();
-  assert.deepEqual(specs.map(t => t.id), ['deharsh', 'hpss']);
+  assert.deepEqual(specs.map(t => t.id), ['deharsh', 'hpss', 'tailverb', 'drive', 'ring']);
   for (const t of specs) for (const sp of t.params) {
     assert.ok(sp.k && sp.l, `${t.id}: key and label`);
     if (sp.type === 'select') assert.ok(sp.opts.some(([v]) => v === sp.d), `${t.id}.${sp.k}: default among options`);
@@ -69,4 +69,17 @@ test('Playhead tools: specs fit the Workbench controls; de-harsh keeps rate, cha
   assert.ok(o.sampleRate === SR && o.channels.length === 2 && o.channels[0].length === src[0].length);
   assert.ok(o.channels.every(c => c.every(Number.isFinite)) && r.report.length > 0);
   assert.notDeepEqual(o.channels[0], src[0]);
+});
+
+test('Playhead tools that follow the events: reverb adds a tail, drive and ring time keep the length', async () => {
+  const { phToolSpecs, phProcess } = await import('../src/app/playhead.js');
+  const specs = Object.fromEntries(phToolSpecs().map(t => [t.id, Object.fromEntries(t.params.map(sp => [sp.k, sp.d]))]));
+  const src = ex.gunshot, n = src[0].length;
+  const tv = await phProcess({ sr: SR, ch: src, name: 'gunshot' }, 'tailverb', specs.tailverb);
+  assert.ok(tv.outputs[0].channels[0].length > n && tv.outputs[0].sampleRate === SR && tv.outputs[0].channels.length === src.length);
+  for (const id of ['drive', 'ring']) {
+    const r = await phProcess({ sr: SR, ch: src, name: 'gunshot' }, id, specs[id]), o = r.outputs[0];
+    assert.ok(o.channels[0].length === n && o.channels.length === src.length && o.channels.every(c => c.every(Number.isFinite)), id);
+    assert.ok(r.report.length > 0, id);
+  }
 });
