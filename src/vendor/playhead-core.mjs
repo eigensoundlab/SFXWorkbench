@@ -1,4 +1,4 @@
-/*! Playhead core 0.2.0 | Apache-2.0 | (c) 2026 Daniel Sandner | https://github.com/eigensoundlab/playhead */
+/*! Playhead core 0.3.0 | Apache-2.0 | (c) 2026 Daniel Sandner | https://github.com/eigensoundlab/playhead */
 const module = undefined, require = undefined;
 const __ph = {};
 // ---- src/analysis.js
@@ -328,12 +328,13 @@ async function extractFeatures(buf, onProgress, opts) {
   onProgress(0.95);
   await tick();
 
+  const mod = modulationOf(env, NCOARSE, nE, envRate, dur);
   const melRaw = FEAT.keepRaw ? Float32Array.from(melDb) : null;
   applyMelFloor(melDb, melDb);
   return {
     sr, len, dur, H, N, nF, dt, nch, fine,
     kz, pk, melDb, melRaw, bark, chroma, sfm,
-    rough, roughT, nB
+    rough, roughT, nB, mod
   };
 }
 
@@ -866,6 +867,62 @@ function parabolic(a, i) {
   if (i <= 0 || i >= a.length - 1) return 0;
   const y0 = a[i - 1], y1 = a[i], y2 = a[i + 1], den = y0 - 2 * y1 + y2;
   return den !== 0 ? Math.max(-0.5, Math.min(0.5, 0.5 * (y0 - y2) / den)) : 0;
+}
+
+/* ===================================================================
+   Modulation spectrogram: how strongly the level pulses at each rate, over time
+   =================================================================== */
+// From the fine band envelopes (12 pairs of Bark bands at sr/128, about 345 per second): in each window, every band's
+// envelope spectrum over its mean (the modulation depth: 1 for a level swinging fully at that rate, 0 for a steady one),
+// averaged over the bands weighted by their power. Rates 0.5 to 128 Hz, 6 rows an octave, from three resolutions so
+// that every rate gets a window of a few of its periods: the envelope averaged to about 22, 86 and 345 per second, with
+// windows of 3, 0.75 and 0.19 s for rates below 4 Hz, 4 to 24 Hz and above 24 Hz. A row needs at least 1.5 periods in
+// its window (short sounds have no slow rows). At most 400 columns. -1 marks no data (silence, or rates too slow).
+const MOD = { rateMin: 0.5, perOctave: 6, octaves: 8, maxCols: 400, branches: [{ dec: 16, win: 3, lo: 0, hi: 4 }, { dec: 4, win: 0.75, lo: 4, hi: 24 }, { dec: 1, win: 0.19, lo: 24, hi: Infinity }] };
+function modulationOf(env, B, nE, envRate, dur) {
+  const rows = MOD.perOctave * MOD.octaves + 1, rateOf = r => MOD.rateMin * Math.pow(2, r / MOD.perOctave);
+  const hop = Math.max(0.01, dur / MOD.maxCols), cols = Math.max(1, Math.ceil(dur / hop));
+  const data = new Float32Array(rows * cols).fill(-1), weight = new Float64Array(cols * MOD.branches.length);
+  MOD.branches.forEach((br, bi) => {
+    const er = envRate / br.dec, nd = Math.floor(nE / br.dec);
+    if (nd < 8) return;
+    const e = new Float32Array(nd * B);
+    for (let j = 0; j < nd; j++) for (let b = 0; b < B; b++) { let s = 0; for (let i = 0; i < br.dec; i++) s += env[(j * br.dec + i) * B + b]; e[j * B + b] = s / br.dec; }
+    const W = Math.max(8, Math.min(nd, Math.round(br.win * er))), M = 2 * nextPow2(W), w = hannP(W), fft = getFFT(M);
+    let ws = 0; for (let i = 0; i < W; i++) ws += w[i];
+    const here = [];
+    for (let r = 0; r < rows; r++) {
+      const f = rateOf(r);
+      if (f < br.lo || f >= br.hi || f > 0.4 * er || f < 1.5 * er / W) continue;
+      const k0 = Math.max(1, Math.round(f * Math.pow(2, -1 / 12) * M / er)), k1 = Math.max(k0, Math.round(f * Math.pow(2, 1 / 12) * M / er));
+      here.push([r, k0, k1]);
+    }
+    if (!here.length) return;
+    const re = new Float64Array(M), im = new Float64Array(M), acc = new Float64Array(here.length);
+    for (let c = 0; c < cols; c++) {
+      const j0 = Math.round((c + 0.5) * hop * er) - (W >> 1);
+      acc.fill(0); let wsum = 0;
+      for (let b = 0; b < B; b++) {
+        let mean = 0, cnt = 0;
+        for (let i = 0; i < W; i++) { const j = j0 + i; if (j >= 0 && j < nd) { mean += e[j * B + b]; cnt++; } }
+        if (cnt < W / 2) continue;
+        mean /= cnt;
+        if (mean < 3e-5) continue;
+        re.fill(0); im.fill(0);
+        for (let i = 0; i < W; i++) { const j = j0 + i; re[i] = ((j >= 0 && j < nd ? e[j * B + b] : mean) - mean) * w[i]; }
+        fft(re, im);
+        const pw = mean * mean;
+        here.forEach(([, k0, k1], q) => { let mx = 0; for (let k = k0; k <= k1; k++) mx = Math.max(mx, Math.hypot(re[k], im[k])); acc[q] += pw * Math.min(1, 2 * mx / (ws * mean)); });
+        wsum += pw;
+      }
+      weight[bi * cols + c] = wsum;
+      if (wsum > 0) here.forEach(([r], q) => { data[r * cols + c] = acc[q] / wsum; });
+    }
+  });
+  // silence: columns far below the loudest are no data
+  let top = 0; for (const v of weight) if (v > top) top = v;
+  MOD.branches.forEach((br, bi) => { for (let c = 0; c < cols; c++) if (weight[bi * cols + c] < top * 1e-7) for (let r = 0; r < rows; r++) { const f = rateOf(r); if (f >= br.lo && f < br.hi) data[r * cols + c] = -1; } });
+  return { rateMin: MOD.rateMin, perOctave: MOD.perOctave, rows, cols, hop, data };
 }
 
 function rhythmOf(F) {
@@ -1980,7 +2037,7 @@ function disagreements(curve, ref, mask, k, minSepFrac) {
 
 // re-derive everything downstream of the features after a parameter change (calibration)
 function resetDerived(F) { F.melDb = F.melRaw ? applyMelFloor(F.melRaw, F.melDb) : F.melDb; delete F._base; delete F._rhythm; delete F._struct; delete F._events; delete F._sfx; delete F._desc; F.guess = guessClass(F); return F; }
-const api = { FEAT, ONSET, applyMelFloor, resetDerived, extractFeatures, computeCurves, analyse, calibrate, guessClass, pool, pearson, diffCorr, disagreements, CLASSES, REF, quantileMasked, kFilterCoeffs, rhythmOf, eventsOf, structureOf, beatF, RHYTHM, STRUCT, sfxOf, SFX, getFFT, hannP, movMean, interpTimes, biquadInto, NMEL };
+const api = { FEAT, ONSET, MOD, modulationOf, applyMelFloor, resetDerived, extractFeatures, computeCurves, analyse, calibrate, guessClass, pool, pearson, diffCorr, disagreements, CLASSES, REF, quantileMasked, kFilterCoeffs, rhythmOf, eventsOf, structureOf, beatF, RHYTHM, STRUCT, sfxOf, SFX, getFFT, hannP, movMean, interpTimes, biquadInto, NMEL };
 if (typeof module !== "undefined" && module.exports) module.exports = api;
 root.WL = api;
 })(__ph);
@@ -3628,7 +3685,7 @@ root.WLFX = api;
 const WL = root.WL || (typeof require !== "undefined" ? require("./analysis.js") : null);
 const PHD = root.PHD || (typeof require !== "undefined" ? require("./descriptors.js") : null);
 
-const VERSION = "0.2.0";            // kept equal to package.json by the test suite
+const VERSION = "0.3.0";            // kept equal to package.json by the test suite
 const SCHEMA = "playhead-analysis", SCHEMA_VERSION = 1;
 const PROFILES = ["fast", "sfx", "music", "auto"];
 
@@ -3700,6 +3757,13 @@ function resample(arr, F, cols, gate, mode) {
   }
   return out;
 }
+// the modulation spectrogram for the "spec:mod" look: one byte per rate and column, 0 for no data, else 1 + 254 x the
+// square root of the modulation depth (so that shallow modulation keeps its detail)
+function modulationDoc(m) {
+  const u8 = new Uint8Array(m.rows * m.cols);
+  for (let c = 0; c < m.cols; c++) for (let r = 0; r < m.rows; r++) { const v = m.data[r * m.cols + c]; u8[c * m.rows + r] = v < 0 ? 0 : 1 + Math.round(254 * Math.sqrt(Math.min(1, v))); }
+  return { rateMin: m.rateMin, perOctave: m.perOctave, rows: m.rows, columns: m.cols, hop: rnd(m.hop, 4), scale: "sqrt", encoding: "base64-u8", data: toB64(u8) };
+}
 function waveOverview(buf, cols) {
   const n = buf.length, chs = []; for (let c = 0; c < Math.min(2, buf.numberOfChannels); c++) chs.push(buf.getChannelData(c));
   const mn = new Array(cols), mx = new Array(cols), rms = new Array(cols);
@@ -3761,7 +3825,7 @@ async function build(F, buf, opts, t0, prog) {
     rhythm: null, sections: null, events: null, layers: null, issues: null, descriptors: null
   };
   // a small mel spectrogram for the spectrogram layer (sfx and music profiles; opts.spectrum false leaves it out)
-  if (opts.spectrum !== false && (profile !== "fast" || opts.spectrum === true)) doc.spectrum = spectrumOf(F, cols);
+  if (opts.spectrum !== false && (profile !== "fast" || opts.spectrum === true)) { doc.spectrum = spectrumOf(F, cols); if (F.mod) doc.modulation = modulationDoc(F.mod); }
   if (profile !== "fast") {
     const X = WL.sfxOf(F, buf, opts.name || "");
     prog(0.75);
@@ -4273,7 +4337,8 @@ function toMarkers(doc, opts) {
 //                                      it is drawn as an outline
 //   { type: "spec" }                  a mel spectrogram (40 bands, 40 Hz to 16 kHz), low frequencies at the bottom
 //   { type: "spec", of, cyclic, curve } a view in the spectrogram's place (see views below): of "tempo" ("spec:tempo",
-//                                      "spec:tempo~cyclic"), "lag" ("spec:lag") or "scale" ("scalogram:onsetStrength")
+//                                      "spec:tempo~cyclic"), "lag" ("spec:lag"), "mod" ("spec:mod") or "scale"
+//                                      ("scalogram:onsetStrength")
 //   { type: "raster", curve, bars }   the bar raster: a row per bar ("raster:onsetStrength") or per 4 bars ("~4bars"),
 //                                      taking the whole strip; sections and ticks are drawn on it, other layers are not
 //   { type: "line", curve, range }    a curve drawn over the waveform; range [lo, hi] maps to the strip height
@@ -4334,6 +4399,7 @@ const LOOKS = {
   raster: { name: "Bar raster", desc: "For music. A row per bar, top to bottom, like a drum pattern: onset strength through each bar, with sections. Bars that hit the same way line up in columns; fills, breaks and drops show as rows that differ.", code: "raster:onsetStrength,sections" },
   tempogram: { name: "Tempogram", desc: "For music. How strongly each tempo (40 to 240 BPM, fast at the top) is present over time. A steady beat is a bright line, a tempo change bends it, double and half tempo show as fainter lines. With bar lines.", code: "spec:tempo,ticks:downbeats" },
   repetition: { name: "Repetition (lag view)", desc: "For music. How alike each moment is to the moment a given time before (that time, the lag, going up). A bright horizontal line means the music repeats what played that long ago. With sections.", code: "spec:lag,sections" },
+  modulation: { name: "Modulation spectrogram", desc: "For any sound. How fast its level pulses, and how strongly, over time: rhythm below about 4 Hz, fluctuation, tremolo and flutter from 4 to 20 Hz, roughness above (fast at the top). Engines, rotors, tremolo, growls and buzzes show as bright rows at their rate; steady tones and plain noise stay dark.", code: "spec:mod" },
   rhythms: { name: "Curve rhythms (scalogram)", desc: "Research view, for any sound. The periodic patterns in onset strength, from fast (top) to slow (bottom): beat, bar and phrase in music, flutter and tremolo in effects. Fainter near the ends, where the sound is too short to be sure of a period.", code: "scalogram:onsetStrength" },
   sculpted: { name: "Waveform as loud as it sounds", desc: "The waveform's envelope follows perceived loudness (a dB-like scale) while its detail stays; colour shows harshness, with the ordinary peak outline for comparison.", code: "sculpt:loudness,wave:harshness,outline,ticks:events+novelty" }
 };
@@ -4385,7 +4451,7 @@ function parseLook(code) {
     const [main, ...flags] = tok.split("~"), i = main.indexOf(":"), type = i < 0 ? main : main.slice(0, i), arg = i < 0 ? "" : main.slice(i + 1);
     if (type === "wave") out.push({ type, colour: arg || null });
     else if (type === "outline") out.push({ type });
-    else if (type === "spec") { if (!arg || arg === "mel") out.push({ type }); else if (arg === "tempo") out.push({ type, of: "tempo", cyclic: flags.includes("cyclic") }); else if (arg === "lag") out.push({ type, of: "lag" }); }
+    else if (type === "spec") { if (!arg || arg === "mel") out.push({ type }); else if (arg === "tempo") out.push({ type, of: "tempo", cyclic: flags.includes("cyclic") }); else if (arg === "lag" || arg === "mod") out.push({ type, of: arg }); }
     else if (type === "scalogram") out.push({ type: "spec", of: "scale", curve: arg || "onsetStrength" });
     else if (type === "raster") out.push({ type, curve: arg || "onsetStrength", bars: flags.includes("4bars") ? 4 : 1 });
     else if (type === "sculpt" && arg) out.push({ type, curve: arg });
@@ -4401,7 +4467,7 @@ function parseLook(code) {
 /** Layers -> look code. */
 function lookCode(layers) {
   return (layers || []).map(l => l.type === "wave" ? "wave" + (l.colour ? ":" + l.colour : "") : l.type === "line" ? "line:" + l.curve
-    : l.type === "spec" ? (l.of === "tempo" ? "spec:tempo" + (l.cyclic ? "~cyclic" : "") : l.of === "lag" ? "spec:lag" : l.of === "scale" ? "scalogram:" + l.curve : "spec")
+    : l.type === "spec" ? (l.of === "tempo" ? "spec:tempo" + (l.cyclic ? "~cyclic" : "") : l.of === "lag" || l.of === "mod" ? "spec:" + l.of : l.of === "scale" ? "scalogram:" + l.curve : "spec")
     : l.type === "raster" ? "raster:" + l.curve + (l.bars === 4 ? "~4bars" : "")
     : l.type === "lane" ? "lane:" + l.curve + (l.signed ? "~signed" : "") : l.type === "ticks" ? (l.of && l.of.length ? "ticks:" + l.of.join("+") : "")
     : l.type === "form" || l.type === "shape" ? l.type + ":" + l.value : l.type === "sculpt" ? "sculpt:" + l.curve : l.type).filter(Boolean).join(",");
@@ -4418,6 +4484,7 @@ function describeLook(layers, doc) {
     else if (l.type === "spec" && !l.of) parts.push(!doc || doc.spectrum ? L("lib.legend.spectrogram", "spectrogram (mel, low at the bottom)") : L("lib.legend.spectrogramAbsent", "spectrogram (not in this analysis)"));
     else if (l.type === "spec" && l.of === "tempo") parts.push((l.cyclic ? L("lib.legend.tempogramCyclic", "tempogram, octaves folded (80 to 160 BPM; a tempo, its half and its double share a row)") : L("lib.legend.tempogram", "tempogram (40 to 240 BPM, fast at the top)")) + (!doc || (doc.rhythm && doc.rhythm.tempogram) ? "" : L("lib.legend.musicAbsent", " (music only; not in this analysis)")));
     else if (l.type === "spec" && l.of === "lag") parts.push(L("lib.legend.lag", "repetition: bright where the music repeats what played a lag earlier (lag going up)") + (!doc || doc.repetition ? "" : L("lib.legend.musicAbsent", " (music only; not in this analysis)")));
+    else if (l.type === "spec" && l.of === "mod") parts.push(L("lib.legend.modulation", "modulation: how fast the level pulses (0.5 to 128 Hz, fast at the top): rhythm, then flutter and tremolo, then roughness") + (!doc || doc.modulation ? "" : absent));
     else if (l.type === "spec" && l.of === "scale") parts.push(L("lib.legend.scalogram", "rhythms in {curve}: fast at the top, slow at the bottom", { curve: lab(l.curve) }) + (has(l.curve) ? "" : absent));
     else if (l.type === "raster") parts.push((l.bars === 4 ? L("lib.legend.raster4", "phrase raster: {curve}, a row per 4 bars, top to bottom", { curve: lab(l.curve) }) : L("lib.legend.raster", "bar raster: {curve}, a row per bar, top to bottom", { curve: lab(l.curve) })) + (!doc || barRows(doc, 1) ? (has(l.curve) ? "" : absent) : L("lib.legend.needsBeat", " (needs a beat: music only)")));
     else if (l.type === "outline") parts.push(L("lib.legend.outline", "outline: peak waveform"));
@@ -4458,6 +4525,7 @@ function lookFits(doc, look) {
     if (l.type === "spec" && !l.of && !doc.spectrum) return false;
     if (l.type === "spec" && l.of === "tempo" && !(doc.rhythm && doc.rhythm.tempogram)) return false;
     if (l.type === "spec" && l.of === "lag" && !doc.repetition) return false;
+    if (l.type === "spec" && l.of === "mod" && !doc.modulation) return false;
     if (l.type === "spec" && l.of === "scale" && (!live(l.curve) || curves[l.curve].length < 40)) return false;
     if (l.type === "raster" && (!live(l.curve) || !barRows(doc, 1))) return false;
   }
@@ -4492,6 +4560,9 @@ function curveValue(arr, rate, ta, tb) {
 //               tempo and its half and double share a row (music profile)
 //   lag view    how alike each moment is to the moment a lag earlier, the lag going up. A bright horizontal line is a
 //               repeat: what plays now was heard that long before (music profile)
+//   modulation  how fast the level pulses, and how strongly, over time (0.5 to 128 Hz, fast at the top): rhythm,
+//               then fluctuation, tremolo and flutter, then roughness. From the band envelopes at analysis (any profile
+//               but fast); a level pulsing at one rate is a bright row, steady tones and plain noise stay dark
 //   scalogram   the periodic patterns in any curve (Morlet wavelet, Torrence & Compo 1998, power divided by scale as
 //               Liu et al. 2007 so equal swings read equally at every period), fast at the top and slow at the bottom:
 //               beat, bar and phrase pulsing in music, flutter and tremolo in effects. Fainter near the ends, where a
@@ -4499,7 +4570,7 @@ function curveValue(arr, rate, ta, tb) {
 // Playhead.view(doc, kind, opts) gives the image as numbers, for hosts that draw it themselves or measure it:
 //   { kind, rows, cols, values (Float32Array, row-major, row 0 at the top, 0..1, -1 where there is no data),
 //     yTicks: [{ row, text }], and colAt(t) (time-based views) or rows of [start, end] seconds (the raster) }
-const VIEW_KINDS = ["raster", "tempo", "lag", "scale"];
+const VIEW_KINDS = ["raster", "tempo", "lag", "scale", "mod"];
 const viewCache = typeof WeakMap !== "undefined" ? new WeakMap() : null;
 function cachedView(doc, key, make) {
   if (!viewCache) return make();
@@ -4588,6 +4659,19 @@ function lagView(doc) {
   const colAt = t => { let lo2 = 0, hi = C - 1; while (lo2 < hi) { const m = (lo2 + hi + 1) >> 1; if (times[m] <= t) lo2 = m; else hi = m - 1; } return lo2; };
   return { kind: "lag", rows: R, cols: C, values, yTicks, colAt, lagSeconds: lagS };
 }
+function modView(doc) {
+  const md = doc.modulation, u8 = md && specBytes(md);
+  if (!u8) return null;
+  const R = md.rows, C = md.columns, values = new Float32Array(R * C);
+  // depth on a square-root scale, from the image's median (black: the texture every moment has, the envelope
+  // fluctuation of noise) to its 99th percentile (white): a level that pulses at one rate is a bright row
+  const vals = []; for (const v of u8) if (v) vals.push(v);
+  vals.sort((a, b) => a - b);
+  const q = p => (vals.length ? (vals[Math.floor(p * (vals.length - 1))] - 1) / 254 : 0), lo = q(0.5), top = Math.max(lo + 0.05, q(0.99));
+  for (let c = 0; c < C; c++) for (let r = 0; r < R; r++) { const v = u8[c * R + r]; values[(R - 1 - r) * C + c] = v ? Math.max(0, Math.min(1, ((v - 1) / 254 - lo) / (top - lo))) : -1; }
+  const yTicks = [1, 4, 16, 64].map(f => ({ row: R - 1 - md.perOctave * Math.log2(f / md.rateMin) + 0.5, text: f + " Hz" })).filter(t => t.row > 0.5 && t.row < R - 0.5);
+  return { kind: "mod", rows: R, cols: C, values, yTicks, colAt: t => Math.max(0, Math.min(C - 1, Math.floor(t / md.hop))), rateOf: r => md.rateMin * Math.pow(2, (R - 1 - r) / md.perOctave) };
+}
 // radix-2 FFT in place (inverse scaled by 1/n)
 function fft(re, im, inv) {
   const n = re.length;
@@ -4651,7 +4735,7 @@ function view(doc, kind, opts) {
   if (!doc || !VIEW_KINDS.includes(kind)) return null;
   const curve = opts.curve || "onsetStrength", bars = opts.bars === 4 ? 4 : 1, cols = Math.max(8, Math.min(512, opts.cols || (bars === 4 ? 192 : 96)));
   const key = kind + "|" + (kind === "raster" ? curve + "|" + bars + "|" + cols : kind === "scale" ? curve : kind === "tempo" ? !!opts.cyclic : "");
-  return cachedView(doc, key, () => kind === "raster" ? rasterView(doc, curve, bars, cols) : kind === "tempo" ? tempoView(doc, opts.cyclic) : kind === "lag" ? lagView(doc) : scaleView(doc, curve));
+  return cachedView(doc, key, () => kind === "raster" ? rasterView(doc, curve, bars, cols) : kind === "tempo" ? tempoView(doc, opts.cyclic) : kind === "lag" ? lagView(doc) : kind === "mod" ? modView(doc) : scaleView(doc, curve));
 }
 const makeCanvas = (w, h) => typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : typeof document !== "undefined" && document.createElement ? Object.assign(document.createElement("canvas"), { width: w, height: h }) : null;
 // an image of rows x cols cells, cell(r, c) -> [r, g, b, a] or null (left clear), drawn into the box dx, dy, dw, dh
@@ -4766,7 +4850,7 @@ function drawStrip(ctx, doc, opts) {
   let colsCache = null;
   const waveCols = () => {
     if (colsCache) return colsCache;
-    const wv = doc.wave, wc = wv.columns, hi = new Float32Array(W), lo = new Float32Array(W);
+    const wv = doc.wave, wc = wv.columns, hi = new Float32Array(Math.ceil(W)), lo = new Float32Array(Math.ceil(W));      // hosts may pass a fractional width
     let peak = 1e-9; for (let c = 0; c < wc; c++) peak = Math.max(peak, Math.abs(wv.min[c] || 0), Math.abs(wv.max[c] || 0));
     for (let x = 0; x < W; x++) {
       const ta = t0 + x / W * span, tb = t0 + (x + 1) / W * span, ca = Math.floor(ta / dur * wc), cb = Math.max(ca + 1, Math.ceil(tb / dur * wc));
@@ -4774,7 +4858,7 @@ function drawStrip(ctx, doc, opts) {
       hi[x] = b / peak; lo[x] = a / peak;
     }
     if (sculpt) {
-      const r = Math.max(2, Math.round(W / 100)), amp = x => Math.max(hi[x], -lo[x]), env = new Float32Array(W);
+      const r = Math.max(2, Math.round(W / 100)), amp = x => Math.max(hi[x], -lo[x]), env = new Float32Array(Math.ceil(W));
       for (let x = 0; x < W; x++) { let m = 0; for (let k = Math.max(0, x - r); k <= Math.min(W - 1, x + r); k++) m = Math.max(m, amp(k)); env[x] = m; }
       for (let x = 0; x < W; x++) {
         const v = valAt(sculpt, t0 + x / W * span, t0 + (x + 1) / W * span), g = v == null || env[x] < 1e-4 ? 0 : Math.max(0, Math.min(1, v)) / env[x];
@@ -4837,7 +4921,7 @@ function drawStrip(ctx, doc, opts) {
           return !(u >= 0) ? null : rampAt(ramp, u).concat(v.faint && v.faint[k] ? 110 : 255);
         }, 0, 0, W, mainH, true);
         axisLabels(ctx, v, mainH, W, th, "right");
-        items.push({ label: l.of === "tempo" ? L("lib.item.tempo", "tempo strength") : l.of === "lag" ? L("lib.item.repeat", "likeness to earlier") : L("lib.item.rhythms", "rhythms in {curve}", { curve: CURVE_LABELS[l.curve] || l.curve }), ramp });
+        items.push({ label: l.of === "tempo" ? L("lib.item.tempo", "tempo strength") : l.of === "lag" ? L("lib.item.repeat", "likeness to earlier") : l.of === "mod" ? L("lib.item.mod", "modulation depth") : L("lib.item.rhythms", "rhythms in {curve}", { curve: CURVE_LABELS[l.curve] || l.curve }), ramp });
         return;
       }
       const sp = doc.spectrum, u8 = specBytes(sp);
