@@ -21,13 +21,15 @@ export const FXDEF = {
     { k: 'sweep', l: 'Sweep to a different end pitch', type: 'bool', d: false },
     { k: 'end', l: 'End pitch', min: -24, max: 24, step: 0.1, u: 'st', d: -12, when: 'sweep' },
     { k: 'curve', l: 'Sweep shape', type: 'select', opts: [['lin', 'Even'], ['exp', 'Fast at start'], ['late', 'Fast at end']], d: 'lin', when: 'sweep' }] },
-  stretch: { name: 'Time stretch', group: 'Pitch & time', hint: 'Changes length without changing pitch.', params: [
+  stretch: { name: 'Time stretch', group: 'Pitch & time', hint: 'Changes length without changing pitch. Keep every attack: only the sound between the hits stretches, so they stay sharp and land where the stretched rhythm puts them (with Playhead on, at its onsets while the stretch comes before any speed change).', params: [
     { k: 'factor', l: 'Length', min: 0.25, max: 16, log: true, u: 'ratio', d: 1.5, whenNot: 'fit' },
     { k: 'fit', l: 'Fit to an exact length', type: 'bool', d: false },
     { k: 'length', l: 'Target length', min: 20, max: 20000, log: true, u: 'ms', d: 1000, when: 'fit' },
     { k: 'method', l: 'Method', type: 'select', opts: STRETCH_METHODS, d: 'wsola' },
     { k: 'win', l: 'Window', min: 10, max: 150, log: true, u: 'ms', d: 40 },
-    { k: 'keep', l: 'Keep attack', min: 0, max: 300, step: 1, u: 'offms', d: 0 }] },
+    { k: 'attacks', l: 'Keep every attack', type: 'bool', d: false },
+    { k: 'attack', l: 'Attack kept', min: 5, max: 150, log: true, u: 'ms', d: 30, when: 'attacks' },
+    { k: 'keep', l: 'Keep attack', min: 0, max: 300, step: 1, u: 'offms', d: 0, whenNot: 'attacks' }] },
   pshift: { name: 'Pitch shift', group: 'Pitch & time', hint: 'Changes pitch and keeps the length.', params: [
     { k: 'st', l: 'Pitch', min: -24, max: 24, step: 0.1, u: 'st', d: -5 },
     { k: 'method', l: 'Method', type: 'select', opts: STRETCH_METHODS.slice(0, 2), d: 'wsola' },

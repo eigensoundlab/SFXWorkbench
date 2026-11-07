@@ -61,3 +61,15 @@ test('low-end alignment repairs cancellation without boosting or touching the hi
   const one = D.layerMix([lay(sub(0.1)), lay(ex.gunshot)], SR), oneA = D.layerMix([lay(sub(0.1)), lay(ex.gunshot)], SR, { lowAlign: 200 });
   assert.ok(Math.abs(rms(oneA[0]) / rms(one[0]) - 1) < 0.1 && finite(oneA));
 });
+
+test('layer stretch: the clip gets longer or shorter, its attack stays', () => {
+  const x = D.synth.gunshot(SR), n = x[0].length;
+  for (const s of [2, 0.5]) {
+    const c = D.prepareLayers([{ ch: x, sr: SR, offset: 0, gain: 0, pitch: 0, reverse: false, stretch: s, pan: 0 }], SR)[0].c;
+    assert.equal(c[0].length, Math.round(n * s));
+    const on = D.layerOnsets(x, SR)[0];
+    for (let i = 0; i < Math.round(0.02 * SR); i++) assert.equal(c[0][Math.round(on * s) + i], x[0][on + i]);
+  }
+  const mixed = D.layerMix([{ ch: x, sr: SR, offset: 100, gain: 0, pitch: 0, reverse: false, stretch: 3, pan: 0 }], SR);
+  assert.equal(mixed[0].length, Math.round(0.1 * SR) + Math.round(n * 3));
+});

@@ -32,6 +32,15 @@ window, so unmodified frames reconstruct the input (tested). FFT convolution zer
   (Nasca Octavian Paul).
 - **Pitch shift:** stretch by the pitch ratio, then varispeed back to the original length.
 - **Keep attack:** the first N ms pass unprocessed; only the rest is stretched.
+- **Keep every attack** (`stretchAttacks`): onsets come from `layerOnsets` (a level jump of 9 dB within 15 ms) or from
+  the caller (Playhead's onsets and event starts). The first 30 ms after each onset, from 3 ms before it, are copied as
+  they are and placed so the onset lands at onset × factor; the sound between one attack and the next is stretched to
+  fill the room left (WSOLA with a window of at most a third of that stretch, or copied and cut with a 2 ms fade, or
+  followed by silence, when it is under 24 ms). Each attack is entered through the source's own 2 ms before it and
+  crossfades into its stretched continuation, so the joins are the source's. This is the slicing approach of DAWs'
+  rhythmic stretch modes; transient-preserving phase vocoders (A. Röbel, "A new approach to transient processing in
+  the phase vocoder," DAFx 2003) keep attacks inside one transform instead. In the layer stack each layer's length uses
+  it (`prepareLayers`, after pitch).
 
 ## Loudness (`loudness.js`)
 

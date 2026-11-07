@@ -119,6 +119,12 @@ export function phEvents(doc, sr) {
   const top = doc.summary.peakDb ?? 0;
   return doc.events.map(e => ({ at: Math.round(e.start * sr), strength: Math.min(0, (e.peakDb ?? top) - top) }));
 }
+/** Playhead's onsets and event starts as sample positions, for a stretch that keeps every attack. null without. */
+export function phOnsets(doc, sr) {
+  if (!doc) return null;
+  const t = (doc.onsets || []).concat((doc.events || []).map(e => e.start)).sort((a, b) => a - b);
+  return t.length ? t.map(v => Math.round(v * sr)) : null;
+}
 /** A Playhead curve mapped to 0..1 (5th..95th percentile) for drives and morph paths: { values, rate }. */
 export function phCurve(doc, name) {
   const c = doc && doc.curves && doc.curves[name];

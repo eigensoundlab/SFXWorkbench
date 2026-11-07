@@ -6,7 +6,7 @@ import { S, cur, newSound } from './state.js';
 import { khz, fmtDb, fmtDur, fmtLufs, bitsLabel, chLabel } from './format.js';
 import { play, stop } from './audio.js';
 import { drawSrc, drawOut } from './draw.js';
-import { ensureOut, scheduleRender, playOutput, toggleCompare } from './output.js';
+import { ensureOut, scheduleRender, playOutput, toggleCompare, syncBypass } from './output.js';
 import { renderLibrary, addSound } from './library.js';
 import { renderMix } from './panels/combine.js';
 import { drawLayers } from './panels/layers.js';
@@ -122,6 +122,8 @@ export function initDeck() {
   $('#btn-play-src').onclick = playSource;
   $('#btn-stop').onclick = () => stop();
   $('#chain-on').onchange = e => { if (e.target.checked !== S.chainOn) toggleCompare(); };
+  $('#btn-bypass').onclick = () => toggleCompare();
+  syncBypass();
   $('#view-wave').onclick = () => setView('wave');
   $('#view-spec').onclick = () => setView('spec');
   $('#view-ph').onclick = () => setView('ph');
@@ -136,6 +138,11 @@ export function initDeck() {
   $('#exp-safe').onchange = e => { S.fin.ceil = e.target.checked; scheduleRender(); };
   $('#exp-fmt').onchange = e => { S.exp.fmt = e.target.value; };
   $('#exp-sr').onchange = e => { S.exp.sr = e.target.value; };
+  $('#btn-save-src').onclick = () => {
+    const s = cur();
+    if (!s || !D.len(s.ch)) return toast('Nothing to save yet.');
+    saveSound(s, s, s.name);
+  };
   $('#btn-save').onclick = () => {
     const s = cur(), o = ensureOut();
     if (!s || !o || o.err || !D.len(o.ch)) return toast('Nothing to save yet.');

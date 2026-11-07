@@ -16,12 +16,14 @@ and open it in any modern browser.
   MP3, OGG and more.
 - **Editing:** trim, delete, silence, reverse, fades, normalize, gain, trim silence, to mono, with undo.
 - **Effect chain** with 23 effects, including a resonator body (play a sound through virtual metal, wood or glass) and
-  dispersion / spring. Also: speed/pitch with sweeps, time stretch (clean, spectral, extreme smear), pitch shift
+  dispersion / spring. Also: speed/pitch with sweeps, time stretch (clean, spectral, extreme smear; it can keep every
+  attack sharp, at Playhead's onsets when Playhead is on), pitch shift
   that keeps length, filter with sweep, EQ, distortion, bitcrush, noise reduction, ring modulator, tremolo,
   flanger/chorus, echo, reverb, transient shaper, compressor, gain, fades, normalize, loudness, DC removal.
 - **51 presets** in six groups: weapons, power and devices, movement and foley, inventory and UI, impacts, space and
   character. Save your own chains as presets in the browser. Mutate nudges every setting a little; Back undoes it.
-- **Compare:** press B while the output plays to switch effects on and off at the same position.
+- **Compare:** press B (or Bypass beside Clear chain) while the output plays to switch effects on and off at the same
+  position. Save source WAV saves the edited source without effects.
 - **Variations:** seeded random pitch, length, volume, tone, start offset and reverse, with a file-name pattern such as
   `{name}_var{nn}`. Play all, save all as one zip.
 - **Accents (context-aware):** analyses a sound's structure (attack, body, tail, transients, pitch, brightness) and
@@ -35,7 +37,8 @@ and open it in any modern browser.
   The layer stack is a timeline: drag clips on up to four lanes under a folder lane that shows the mix, line the layers'
   hits up to the sample (shift and polarity), and sum the low end in phase so layers stop cancelling. With Playhead on,
   the folder shows each layer's share, the loudest layer per band and the bands two layers share, and "Find
-  arrangements" searches offsets and gains for a punchy, big or clean result.
+  arrangements" searches offsets and gains for a punchy, big or clean result. Drag a clip's right edge to stretch it:
+  every attack stays sharp, so beds and ambiences can be lengthened under the hits.
 - **Generate** with five engines, each with dice types to roll, mutate and refine:
   - *Impact*: a physical model built as **cause → object → aftermath**. An action (hit, scrape, roll, crack) excites a
     resonant object (11 materials, 7 shapes), followed by bounces, rolling, debris and rumble. Ammo shells, coins,
@@ -50,7 +53,7 @@ and open it in any modern browser.
   - "Add as layer" sends a generated sound straight into the layer stack to build action + effect designs.
 - **Slice and loop:** split many takes in one recording at the silences; build seamless loops and start/loop/stop sets
   for looping devices.
-- **Finishing on everything you save:** loudness target (LUFS), mono or stereo, silence trim, DC removal, de-click
+- **Finishing on everything you save from the output:** loudness target (LUFS), mono or stereo, silence trim, DC removal, de-click
   edges, peak ceiling. Formats: source, 16/24-bit PCM or 32-bit float; any common sample rate.
 - **Waveform or spectrum** display, light and dark themes, keyboard shortcuts.
 - **Playhead analysis (optional):** see below.

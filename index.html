@@ -156,10 +156,11 @@
           <label>Sample rate <select id="exp-sr"></select></label>
           <div class="export-btns">
             <button class="btn" id="btn-bake" type="button">Add output to library</button>
+            <button class="btn" id="btn-save-src" type="button" title="The selected sound as the source lane shows it, with your edits: no effects and no finishing (format, sample rate and the peak ceiling still apply)">Save source WAV</button>
             <button class="btn primary" id="btn-save" type="button">Save output WAV</button>
           </div>
         </div>
-        <p class="hint">Finishing is part of the output you hear and applies to everything you save: output, variations, slices and loops.</p>
+        <p class="hint">Finishing is part of the output you hear and applies to everything you save from it: output, variations, slices and loops. Save source WAV keeps the source as it is.</p>
       </div>
     </div>
 
@@ -178,6 +179,7 @@
         <label>Add effect <select id="add-fx"></select></label>
         <button class="btn" id="btn-mutate" type="button" title="Nudge every setting a little at random">Mutate</button>
         <button class="btn" id="btn-back" type="button" title="Go back to the chain before the last preset, mutate or clear">Back</button>
+        <button class="btn" id="btn-bypass" type="button" aria-pressed="false" title="Hear the source without the effect chain; finishing stays. The chain is kept. Shortcut: B">Bypass</button>
         <button class="btn" id="btn-clear" type="button">Clear chain</button>
       </div>
       <div class="pane-bar">

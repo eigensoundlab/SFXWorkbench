@@ -34,11 +34,13 @@ Shapes are documented as JSDoc typedefs in `src/dsp/types.js`.
 
 ```
 Source sound ──▶ effect chain (processChain) ──▶ finish() ──▶ output lane (heard, drawn, cached)
-                                                       └──▶ encodeFor(): optional resample, peak ceiling, WAV encode ──▶ save
+     │                                                 └──▶ encodeFor(): optional resample, peak ceiling, WAV encode ──▶ save
+     └──▶ encodeFor() ──▶ Save source WAV (the edited source, no effects or finishing)
 ```
 
 - The output is computed lazily by `ensureOut()` (`src/app/output.js`) and cached by
-  `soundId:ver:chainJSON:finishingJSON`. Call `scheduleRender()` after anything that can change it.
+  `soundId:ver:chainJSON:finishingJSON` (plus `:ph` when Playhead's onsets are used). Call `scheduleRender()` after
+  anything that can change it.
 - Finishing (`src/app/finish.js`) is part of what the user hears, so playback and saved files match. Variations, slices
   and loops run through the same finishing. Loops skip trimming and de-click fades, which would break the seam.
 - The Slice & loop tools work on the source sound without the effect chain; the UI says so.
@@ -108,12 +110,13 @@ legend and links to the feedback form. Playhead's own tools run through `phProce
 the source sound and add their outputs to the library.
 
 The DSP never imports Playhead (ESLint checks). The panels turn Playhead results into plain data first: events become
-`[{ at, strength }]` for `renderAccents`, curves become 0..1 arrays for `reactionGen` and the morphs (`morphAmount`).
-With `PH.on` false none of this runs and the panels pass nothing extra, which is what makes the with/without comparison
-exact.
+`[{ at, strength }]` for `renderAccents`, curves become 0..1 arrays for `reactionGen` and the morphs (`morphAmount`),
+and onsets become sample positions (`phOnsets`) that `ensureOut` hands the chain as `ctx.onsets` for a stretch that keeps
+every attack (the output key notes it, so the output renders again when the analysis arrives). With `PH.on` false none
+of this runs and the panels pass nothing extra, which is what makes the with/without comparison exact.
 
-The layer stack's timeline (`src/app/panels/layers.js`) analyses each layer as it sounds (re-pitched, reversed, at the
-mix rate) with `phPartDoc`, as a sound effect at 100 curve columns per second, so the documents combine. Its folder
+The layer stack's timeline (`src/app/panels/layers.js`) analyses each layer as it sounds (re-pitched, reversed,
+stretched, at the mix rate) with `phPartDoc`, as a sound effect at 100 curve columns per second, so the documents combine. Its folder
 views, measures and search call Playhead's `combine`, `align`, `measureParts` and `arrange` on those documents: no
 audio is analysed again when a clip moves. Align hits and the low-end option are DSP (`layering.js`) and work with
 Playhead off.

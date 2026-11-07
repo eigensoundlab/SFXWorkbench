@@ -97,7 +97,7 @@ function loadExamples() {
     { src: made.gunshot.id, offset: 880, gain: 0, pitch: 0, pan: 0, reverse: false },
     { src: made.metal_hit.id, offset: 885, gain: -10, pitch: -5, pan: -20, reverse: false },
     { src: null, offset: 0, gain: 0, pitch: 0, pan: 0, reverse: false },
-  ].map(L => ({ ...L, polarity: 1, mute: false, solo: false }));
+  ].map(L => ({ ...L, stretch: 1, polarity: 1, mute: false, solo: false }));
 }
 
 /** Show or hide everything that needs Playhead analysis; with it off the app works exactly as without Playhead. */

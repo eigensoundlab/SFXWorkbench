@@ -2,28 +2,34 @@
 /**
  * Layer stack: mixing up to four sounds at offsets, and two ways to stop layers from cancelling each other.
  *
- * - layerMix(layers, sr, opts) places, re-pitches, reverses, pans and sums the layers. opts.lowAlign (Hz, 0 = off) lines
- *   up the phase of the layers below that frequency before summing: per bin, each layer is turned to the phase of the
- *   layer that is strongest there (from their cross-spectrum smoothed over 40 ms). It only repairs cancellation: the low
- *   band ends up no weaker than the plain sum and no stronger than the layers' power sum, so nothing is boosted that
- *   the layers did not have. Above the cutoff (with a crossover of a quarter octave) the mix is the plain sum.
+ * - layerMix(layers, sr, opts) places, re-pitches, reverses, stretches, pans and sums the layers. A layer's stretch
+ *   (a length ratio) keeps every attack (stretchAttacks), so hits stay sharp; long ratios suit ambiences and beds.
+ *   opts.lowAlign (Hz, 0 = off) lines up the phase of the layers below that frequency before summing: per bin, each
+ *   layer is turned to the phase of the layer that is strongest there (from their cross-spectrum smoothed over 40 ms).
+ *   It only repairs cancellation: the low band ends up no weaker than the plain sum and no stronger than the layers'
+ *   power sum, so nothing is boosted that the layers did not have. Above the cutoff (with a crossover of a quarter
+ *   octave) the mix is the plain sum.
  * - alignHits(layers, sr, opts) finds, for each layer, the shift (a few ms) and polarity that line its strongest hit up
  *   with the main layer's: onsets first, then the cross-correlation of the first 30 ms, in the low band when both carry
  *   low end there. Two sub layers a few ms apart cancel in the low end; lined up they add.
  * The same ideas fold stereo to mono in Playhead (per-bin phase, attacks in the time domain); here they act between
- * layers. Layers: [{ ch, sr, offset (ms), gain (dB), pitch (semitones), reverse, pan (-1..1), polarity (1 or -1) }].
+ * layers. Layers: [{ ch, sr, offset (ms), gain (dB), pitch (semitones), reverse, stretch (length ratio, default 1),
+ * pan (-1..1), polarity (1 or -1) }].
  */
-import { len, dbToLin, follower, monoAbs } from './core.js';
+import { len, dbToLin } from './core.js';
 import { resample, varispeed } from './resample.js';
+import { layerOnsets, stretchAttacks } from './stretch.js';
 import { fft, hann } from './fft.js';
 
-/** The layers as they will sound: at the mix rate, reversed and re-pitched, with their offset in samples. */
+/** The layers as they will sound: at the mix rate, reversed, re-pitched and stretched (keeping every attack), with
+ *  their offset in samples. */
 export function prepareLayers(layers, sr) {
   return layers.map(L => {
     let c = L.ch;
     if (L.sr !== sr) c = resample(c, L.sr, sr);
     if (L.reverse) c = c.map(x => x.slice().reverse());
     if (L.pitch) c = varispeed(c, () => Math.pow(2, L.pitch / 12));
+    if (L.stretch && Math.abs(L.stretch - 1) > 1e-3) c = stretchAttacks(c, sr, L.stretch);
     return { c, off: Math.max(0, Math.round((L.offset || 0) * sr / 1000)), g: dbToLin(L.gain || 0) * (L.polarity === -1 ? -1 : 1), pan: L.pan || 0 };
   });
 }
@@ -102,22 +108,6 @@ function addLowAlign(sum, xs, sr, cut) {
   for (let i = 0; i < n; i++) { const nv = norm[i + half]; if (nv > 1e-6) sum[i] += corr[i + half] / nv; }
 }
 
-/** Onsets of a sound, in samples: where its level jumps by 9 dB or more within 15 ms, at most one per 30 ms, within
- *  40 dB of its peak. */
-export function layerOnsets(chs, sr) {
-  const env = follower(monoAbs(chs), 0.2, 30, sr), n = env.length, hop = Math.max(1, Math.round(sr / 1000));
-  let pk = 0; for (let i = 0; i < n; i++) pk = Math.max(pk, env[i]);
-  if (!(pk > 0)) return [];
-  const floor = pk * 0.01, back = Math.round(0.015 * sr), gap = Math.round(0.03 * sr), out = [];
-  for (let i = back; i < n; i += hop) {
-    if (env[i] < floor) continue;
-    let mn = Infinity; for (let j = i - back; j < i; j += hop) mn = Math.min(mn, env[j]);
-    if (env[i] >= Math.max(mn, pk * 1e-4) * 2.8 && (!out.length || i - out[out.length - 1] >= gap)) out.push(i);
-  }
-  // a sound that starts loud starts with an onset
-  if (env[Math.min(n - 1, hop)] >= floor && !(out.length && out[0] < gap)) out.unshift(0);
-  return out;
-}
 // mono, optionally low-passed (two one-pole sections at `fc` Hz), of a layer as placed
 function monoOf(L, fc, sr) {
   const n = len(L.c), m = new Float32Array(n);

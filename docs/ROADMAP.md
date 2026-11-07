@@ -34,7 +34,6 @@ Ideas ranked roughly by value for game sound work. Open an issue before starting
 
 - Formant-preserving pitch shift for voices and creatures.
 - Phase-locked phase vocoder (Laroche–Dolson) for cleaner spectral stretch.
-- Transient-aware stretch: detect onsets and keep each attack unstretched, not only the first.
 - Spectral freeze and spectral blur effects.
 - Per-variation random chain parameters (randomize selected effect params within ranges, not just pitch and tone).
 - Doppler / pass-by tool with distance-based level and air absorption.

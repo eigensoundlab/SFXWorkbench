@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
  * Layer stack as a timeline, the default view of "Layer stack" in Combine & morph: one lane per layer with a clip to
- * drag (snapping to the other layers' onsets), and the mix on a folder lane above, as in a DAW. "Align hits" lines the
+ * drag (snapping to the other layers' onsets) and to stretch by its right edge (keeping every attack: beds and
+ * ambiences can be lengthened or tightened under the hits), and the mix on a folder lane above, as in a DAW. "Align hits" lines the
  * layers' shared hits up (shift and polarity, DSP only); "Line up the low end" makes the bounce sum the low end in phase.
  * With Playhead analysis on, the folder can also show the layers' combined Playhead, each layer's share, the loudest
  * layer in each band and the bands two layers share, with measures of the whole, and "Find arrangements" searches
@@ -35,23 +36,25 @@ const anySolo = () => S.layers.some(L => L.solo && L.src && byId(L.src));
 const isAudible = L => !!(L.src && byId(L.src)) && !L.mute && (!anySolo() || L.solo);
 /** The mix's sample rate: the first layer's sound's (as when rendering). */
 export function mixRate() { const L = S.layers.find(l => l.src && byId(l.src)); return L ? byId(L.src).sr : 48000; }
-/** A layer as heard: its sound resampled to the mix rate, reversed and re-pitched (cached). */
+/** A layer as heard: its sound resampled to the mix rate, reversed, re-pitched and stretched (cached). While its edge
+ *  is being dragged, the unstretched clip drawn at the new length, so a drag never waits for a stretch. */
 function clipOf(L, sr) {
   const s = byId(L.src); if (!s) return null;
-  const key = [L.src, s.ver, L.pitch, L.reverse, sr].join(':');
+  const d = TL.drag, sizing = d && d.mode === 'len' && S.layers[d.k] === L;
+  const stretch = sizing ? 1 : L.stretch || 1, key = [L.src, s.ver, L.pitch, L.reverse, stretch, sr].join(':');
   let c = TL.clips.get(key);
   if (!c) {
-    const ch = D.prepareLayers([{ ch: s.ch, sr: s.sr, offset: 0, gain: 0, pitch: L.pitch, reverse: L.reverse, pan: 0 }], sr)[0].c;
+    const ch = D.prepareLayers([{ ch: s.ch, sr: s.sr, offset: 0, gain: 0, pitch: L.pitch, reverse: L.reverse, stretch, pan: 0 }], sr)[0].c;
     c = { key, ch, sr, dur: D.len(ch) / sr, name: s.name };
     TL.clips.set(key, c);
     if (TL.clips.size > 24) TL.clips.delete(TL.clips.keys().next().value);
   }
-  return c;
+  return sizing ? { ...c, dur: c.dur * (L.stretch || 1), sizing: true } : c;
 }
 const onsetsOf = c => { if (!TL.onsets.has(c.key)) TL.onsets.set(c.key, D.layerOnsets(c.ch, c.sr).map(i => i / c.sr)); return TL.onsets.get(c.key); };
 /** The DSP layers for the mixer (only the audible ones), with polarity. */
 export function mixLayers(list = S.layers) {
-  return list.filter(isAudible).map(L => { const s = byId(L.src); return { ch: s.ch, sr: s.sr, offset: L.offset, gain: L.gain, pitch: L.pitch, reverse: L.reverse, pan: L.pan / 100, polarity: L.polarity === -1 ? -1 : 1 }; });
+  return list.filter(isAudible).map(L => { const s = byId(L.src); return { ch: s.ch, sr: s.sr, offset: L.offset, gain: L.gain, pitch: L.pitch, reverse: L.reverse, stretch: L.stretch || 1, pan: L.pan / 100, polarity: L.polarity === -1 ? -1 : 1 }; });
 }
 /** The layers as Playhead parts (audible layers whose documents are ready); null while any is still being analysed. */
 function partsOf(list = S.layers) {
@@ -120,7 +123,9 @@ function paint() {
     g.restore();
     g.fillStyle = col; g.fillRect(x0, 0, cw, 2);
     g.strokeStyle = col; g.globalAlpha = TL.drag && TL.drag.k === k ? 1 : 0.5; g.strokeRect(x0 + 0.5, 0.5, cw - 1, H - 1); g.globalAlpha = 1;
-    if (cw > 50) { g.font = '10px "IBM Plex Mono", monospace'; g.fillStyle = T.ink; g.fillText((L.polarity === -1 ? 'Ø ' : '') + c.name, x0 + 4, 13); }
+    if (cw > 50) { g.font = '10px "IBM Plex Mono", monospace'; g.fillStyle = T.ink; g.fillText((L.polarity === -1 ? 'Ø ' : '') + c.name + ((L.stretch || 1) !== 1 ? ' ×' + (L.stretch || 1).toFixed(2) : ''), x0 + 4, 13); }
+    // the stretch handle: a grip on the clip's right edge
+    g.fillStyle = col; g.globalAlpha = TL.drag && TL.drag.k === k && TL.drag.mode === 'len' ? 1 : 0.55; g.fillRect(x0 + cw - 4, H / 2 - 12, 3, 24); g.globalAlpha = 1;
     if (!isAudible(L)) { g.fillStyle = T.well; g.globalAlpha = 0.6; g.fillRect(x0, 0, cw, H); g.globalAlpha = 1; }
   });
   paintFolder(T, sr);
@@ -151,7 +156,7 @@ function paintFolder(T, sr) {
 }
 // the mix as rendered (low end lined up when chosen), computed once the layers stop moving; a plain sum while dragging
 function mixPreview(sr) {
-  const ls = mixLayers(), key = JSON.stringify([ls.map(l => [l.offset, l.gain, l.pitch, l.reverse, l.pan, l.polarity, D.len(l.ch)]), S.layerLow, sr, S.layers.map(L => L.src && byId(L.src) ? byId(L.src).ver : 0)]);
+  const ls = mixLayers(), key = JSON.stringify([ls.map(l => [l.offset, l.gain, l.pitch, l.reverse, l.stretch, l.pan, l.polarity, D.len(l.ch)]), S.layerLow, sr, S.layers.map(L => L.src && byId(L.src) ? byId(L.src).ver : 0)]);
   if (TL.mix && TL.mixKey === key) return TL.mix;
   // plain preview from the cached clips (mono): fast enough for every move
   let n = 0; const clips = S.layers.filter(isAudible).map(L => { const c = clipOf(L, sr); n = Math.max(n, Math.round(L.offset / 1000 * sr) + D.len(c.ch)); return { L, c }; });
@@ -259,17 +264,33 @@ function snapTargets(k, sr) {
   S.layers.forEach((L, j) => { if (j === k || !L.src) return; const c = clipOf(L, sr); if (!c) return; out.push(L.offset / 1000); for (const t of onsetsOf(c).slice(0, 200)) out.push(L.offset / 1000 + t); });
   return out;
 }
+const STRETCH = LAYER_SPEC.find(s => s.k === 'stretch');
 function bindLane(cv, k) {
   const over = e => { const L = S.layers[k], c = L.src && clipOf(L, mixRate()); if (!c) return false; const t = fracX(e, cv) * TL.span; return t >= L.offset / 1000 && t <= L.offset / 1000 + c.dur; };
+  // within 7 px of the clip's right edge: stretch instead of move
+  const onEdge = e => { const L = S.layers[k], c = L.src && clipOf(L, mixRate()); if (!c) return false; const x = fracX(e, cv) * cv.clientWidth, xe = (L.offset / 1000 + c.dur) / TL.span * cv.clientWidth; return Math.abs(x - xe) <= 7; };
   cv.addEventListener('pointerdown', e => {
-    if (!over(e)) { TL.pos = fracX(e, cv) * TL.span; playLine(null, mixRate()); return; }
+    const edge = onEdge(e);
+    if (!edge && !over(e)) { TL.pos = fracX(e, cv) * TL.span; playLine(null, mixRate()); return; }
     const L = S.layers[k], sr = mixRate(), c = clipOf(L, sr);
-    TL.drag = { k, grab: fracX(e, cv) * TL.span - L.offset / 1000, targets: snapTargets(k, sr), anchors: [0].concat(onsetsOf(c).slice(0, 32)) };
+    if (edge) {
+      TL.drag = { k, mode: 'len' };
+      const c1 = clipOf(L, sr);       // the unstretched clip (drag mode), its length at stretch 1
+      Object.assign(TL.drag, { base: c1.dur / (L.stretch || 1), targets: snapTargets(k, sr) });
+    } else TL.drag = { k, grab: fracX(e, cv) * TL.span - L.offset / 1000, targets: snapTargets(k, sr), anchors: [0].concat(onsetsOf(c).slice(0, 32)) };
     cv.setPointerCapture(e.pointerId); cv.classList.add('is-drag');
   });
   cv.addEventListener('pointermove', e => {
     const d = TL.drag;
-    if (!d || d.k !== k) { if (e.pointerType !== 'touch') cv.style.cursor = over(e) ? 'grab' : ''; return; }
+    if (!d || d.k !== k) { if (e.pointerType !== 'touch') cv.style.cursor = onEdge(e) ? 'ew-resize' : over(e) ? 'grab' : ''; return; }
+    if (d.mode === 'len') {      // the clip's end follows the pointer, snapping to the other layers' starts and onsets
+      const L = S.layers[k], start = L.offset / 1000;
+      let end = fracX(e, cv) * TL.span;
+      if (!e.altKey) { let best = 6 / Math.max(1, cv.clientWidth) * TL.span; for (const tg of d.targets) { const dd = Math.abs(tg - end); if (tg > start && dd < best) { best = dd; end = tg; } } }
+      L.stretch = Math.round(Math.max(STRETCH.min, Math.min(STRETCH.max, (end - start) / Math.max(1e-3, d.base))) * 100) / 100;
+      S.layerCands = null; syncHeader(k); drawLayers();
+      return;
+    }
     let t = fracX(e, cv) * TL.span - d.grab;
     if (!e.altKey) {     // snap: a clip start or onset of this layer onto another layer's, within 6 px
       let best = 6 / Math.max(1, cv.clientWidth) * TL.span;
@@ -376,7 +397,7 @@ export function renderTimeline(body, soundOptions) {
   const ruler = h('canvas', { class: 'tl-cv', role: 'img', 'aria-label': 'Time ruler; click to set where playback starts' });
   const folder = h('canvas', { class: 'tl-cv', role: 'img', 'aria-label': 'Folder: the layers as a whole; click to set where playback starts' });
   const fdesc = h('p', { class: 'hint tl-fdesc' }), measures = h('div', { class: 'chips tl-measures' });
-  g.append(h('div', { class: 'tl-head tl-head-ruler' }, h('span', { class: 'hint', text: 'Drag a clip to move it; Alt: no snapping' })), ruler,
+  g.append(h('div', { class: 'tl-head tl-head-ruler' }, h('span', { class: 'hint', text: 'Drag a clip to move it, its right edge to stretch it (attacks stay); Alt: no snapping' })), ruler,
     h('div', { class: 'tl-head tl-head-folder' }, h('span', { class: 'ab-key', text: 'Mix' }), fdesc, measures), folder);
   const heads = [], lanes = [];
   S.layers.forEach((L, i) => {
@@ -388,7 +409,7 @@ export function renderTimeline(body, soundOptions) {
       h('div', { class: 'tl-line' }, h('span', { class: 'ab-key layer-idx', text: String(i + 1) }), sel,
         h('span', { class: 'tl-ms' }, tog('mute', 'M', 'Mute'), tog('solo', 'S', 'Solo'), tog('polarity', 'Ø', 'Invert polarity'), tog('reverse', 'R', 'Reverse'))),
       h('div', { class: 'tl-prms' }, LAYER_SPEC.map(sp => paramRow(sp, L, () => { if (S.layerCands) { S.layerCands = null; renderCands(); } drawLayers(); }, `tl${i}`))));
-    const cv = h('canvas', { class: 'tl-cv tl-lane', role: 'slider', tabindex: '0', 'aria-label': `Layer ${i + 1} clip: drag or use the arrow keys to move it (Shift: 10 ms)`, 'aria-valuemin': '0', 'aria-valuemax': String(OFF_MAX) });
+    const cv = h('canvas', { class: 'tl-cv tl-lane', role: 'slider', tabindex: '0', 'aria-label': `Layer ${i + 1} clip: drag or use the arrow keys to move it (Shift: 10 ms); drag its right edge to stretch it, or use the Length slider`, 'aria-valuemin': '0', 'aria-valuemax': String(OFF_MAX) });
     bindLane(cv, i);
     heads.push(head); lanes.push({ cv });
     g.append(head, cv);

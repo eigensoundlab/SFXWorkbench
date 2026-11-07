@@ -7,7 +7,7 @@ import { TAU, rng, len, peak, scale, copy, matchPeak, trimTail, monoAbs, followe
 import { varispeed } from './resample.js';
 import { biquad, biquadG, runBiquad } from './filters.js';
 import { stft, istft } from './fft.js';
-import { timeStretch, pitchShift } from './stretch.js';
+import { timeStretch, pitchShift, stretchAttacks } from './stretch.js';
 import { loudnessNormalize } from './loudness.js';
 import { extract } from './edit.js';
 import { buildBody, resonateMono, disperseMono, maxTau } from './physical.js';
@@ -172,11 +172,19 @@ export const FX = {
     });
   },
 };
-export function processChain(snd, chain) {
-  let ch = snd.ch;
+// effects after which the source's timing no longer holds
+const MOVES_TIME = new Set(['pitch', 'stretch']);
+/**
+ * Run the chain on snd ({ sr, ch }). ctx (optional): what is known about the source, such as ctx.onsets (sample
+ * positions, e.g. from Playhead); each effect receives it as its fourth argument while the timing is still the source's
+ * (no speed change or stretch before it), and null after.
+ */
+export function processChain(snd, chain, ctx) {
+  let ch = snd.ch, same = true;
   for (const fx of chain) {
     if (!fx.on || !FX[fx.type]) continue;
-    ch = FX[fx.type](ch, snd.sr, fx.p);
+    ch = FX[fx.type](ch, snd.sr, fx.p, same && ctx ? ctx : null);
+    if (MOVES_TIME.has(fx.type)) same = false;
     if (!len(ch)) break;
   }
   return { sr: snd.sr, ch: ch === snd.ch ? copy(ch) : ch };
@@ -185,7 +193,13 @@ export function processChain(snd, chain) {
 
 /* ---------- more effects ---------- */
 Object.assign(FX, {
-  stretch(ch, sr, p) {
+  stretch(ch, sr, p, ctx) {
+    // keep every attack: onsets from the context (Playhead) while the timing is the source's, else found here
+    if (p.attacks) {
+      const n = len(ch); if (!n) return copy(ch);
+      const factor = p.fit ? Math.max(1, Math.round(p.length * sr / 1000)) / n : p.factor;
+      return stretchAttacks(ch, sr, factor, { method: p.method, winMs: p.win, attackMs: p.attack, onsets: ctx && ctx.onsets });
+    }
     const n = len(ch), keep = Math.min(n - 1, Math.round((p.keep || 0) * sr / 1000));
     const head = keep > 0 ? ch.map(c => c.slice(0, keep)) : null, rest = keep > 0 ? ch.map(c => c.slice(keep)) : ch;
     const rn = len(rest); if (!rn) return copy(ch);

@@ -46,6 +46,7 @@ export const LAYER_SPEC = [
   { k: 'gain', l: 'Gain', min: -30, max: 12, step: 0.5, u: 'dB', d: 0 },
   { k: 'pitch', l: 'Pitch', min: -24, max: 24, step: 0.1, u: 'st', d: 0 },
   { k: 'pan', l: 'Pan', min: -100, max: 100, step: 1, u: '%', d: 0 },
+  { k: 'stretch', l: 'Length', min: 0.25, max: 8, log: true, u: 'ratio', d: 1 },
 ];
 
 export const SLICE_SPEC = [

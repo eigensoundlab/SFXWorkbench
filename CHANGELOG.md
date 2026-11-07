@@ -5,6 +5,27 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-11-07
+
+### Added
+- Time stretch can keep every attack: only the sound between the hits stretches, the first 30 ms (adjustable) after each
+  onset is copied as it is, and each hit lands where the stretched rhythm puts it (onset × length). A plain stretch
+  smears or doubles hits, moves them by tens of milliseconds at large ratios and loses some when shrinking hard; the joins
+  go through the source's own samples, so they do not click. With Playhead on, the attacks are Playhead's onsets and
+  events while the stretch comes before any speed change in the chain; otherwise they are found by the built-in
+  detector (`stretchAttacks` in `stretch.js`).
+- Layer stack: each layer has a length (×0.25 to ×8), set with its slider or by dragging the clip's right edge in the
+  timeline (snapping to the other layers' starts and onsets). It keeps every attack, so a bed or ambience can be
+  stretched under the hits or tightened to them, and the layers' Playhead analyses follow.
+- Bypass beside Clear chain: hear the source without the effect chain (finishing stays) and keep the chain. It is the
+  same switch as "Effects on" in the output lane and the B key; a bypassed chain is dimmed.
+- Save source WAV, before Save output WAV: the selected sound as the source lane shows it, with your edits, without
+  effects or finishing (the format, sample rate and peak ceiling still apply).
+
+### Changed
+- `processChain(snd, chain, ctx)` passes what is known about the source (`ctx.onsets`) to each effect while the timing is
+  still the source's. `layerOnsets` moved from `layering.js` to `stretch.js` (same export).
+
 ## [0.10.0] - 2026-11-07
 
 ### Added

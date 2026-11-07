@@ -65,7 +65,9 @@ docs/                 architecture, DSP notes, roadmap
 ## Recipes
 
 **Add an effect**
-1. Add the processor to `FX` in `src/dsp/effects.js`: `(channels, sampleRate, params) => channels`.
+1. Add the processor to `FX` in `src/dsp/effects.js`: `(channels, sampleRate, params, ctx) => channels`. `ctx` is what
+   is known about the source (`ctx.onsets`, from Playhead) while the timing is still the source's, else null; an effect
+   that moves the timing is listed in `MOVES_TIME`.
 2. Add the UI definition under the same key in `src/config/effects.js` (name, group, optional hint, params).
 3. Add a unit test for the processor. `npm test` will also check the spec against the processor.
 
@@ -118,7 +120,9 @@ look; `PH.look` chooses it), so a new Playhead build changes the view by replaci
 **Layer stack**
 The mixer, `alignHits` and `layerOnsets` are in `src/dsp/layering.js` (`layerMix(layers, sr, { lowAlign })`). The
 timeline is `src/app/panels/layers.js`; the sliders view stays in `combine.js`, and both edit `S.layers` (each layer has
-`src`, `offset`, `gain`, `pitch`, `pan`, `reverse`, `polarity`, `mute`, `solo`). Folder views and Find arrangements use
+`src`, `offset`, `gain`, `pitch`, `pan`, `reverse`, `stretch`, `polarity`, `mute`, `solo`; `stretch` is a length ratio
+applied after pitch by `stretchAttacks`, and dragging the clip's right edge sets it, drawing the unstretched clip at the
+new length until the drag ends). Folder views and Find arrangements use
 Playhead's `combine`, `align`, `measureParts` and `arrange` on per-layer documents from `phPartDoc` (sound effects at
 100 curve columns per second), only while `PH.on`. A new folder view is an entry in `FOLDER_VIEWS` drawn in
 `paintFolder`; a new goal is added to Playhead's `GOALS` (Playhead repository) and to `GOALS` here.
