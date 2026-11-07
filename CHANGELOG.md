@@ -5,6 +5,31 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-07
+
+### Added
+- The layer stack as a timeline, now its default view (the sliders stay one click away): one lane per layer with a clip
+  to drag, snapping to the other layers' clip starts and onsets (Alt moves freely; arrow keys move by 1 ms, Shift by
+  10 ms), and the mix on a folder lane above, as in a DAW. Each layer has mute, solo, polarity and reverse buttons and
+  its offset, gain, pitch and pan; "Play layers" plays the mix from where you click.
+- Align hits: each layer's strongest hit shared with the loudest layer is lined up to the sample, with the polarity
+  that makes it add (compared in the low band when both carry low end there). A layer moves only when that makes the
+  hit at least 1 dB stronger, so flams that are a choice stay.
+- Low end: the bounce can sum the layers' low end in phase (below 120, 200 or 300 Hz), the way Fold to mono lines up
+  two channels. It only repairs cancellation between layers: the low band ends up no weaker than the plain sum and no
+  stronger than the layers' power sum.
+- With Playhead analysis on, the folder lane shows the layers' combined Playhead (from their analyses, without
+  analysing the mix, so it follows every move), each layer's share of the energy, the loudest layer in each band, or the
+  bands two layers share (fading where they are panned apart), with measures of the whole: rise time, how many layers
+  start together, focus, tail, shared bands, spectral coverage.
+- Find arrangements (Playhead on): Playhead tries some 500 offsets and gains of the layers in a fraction of a second and
+  offers the best six that differ, for a punchy, big (cinematic) or clean result. Each can be played and used, and
+  "Back to the arrangement before" undoes it. The loudest layer stays; the others move up to 250 ms and −6 to +3 dB.
+
+### Changed
+- Playhead core with combining and arranging (Playhead 0.2.0 plus unreleased changes; see `src/vendor/README.md`).
+- `layerMix` moved from `morph.js` to the new `layering.js`, with polarity per layer and the low-end option.
+
 ## [0.9.0] - 2026-11-05
 
 ### Added

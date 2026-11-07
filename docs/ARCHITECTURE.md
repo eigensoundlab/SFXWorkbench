@@ -53,7 +53,8 @@ All state lives in `S` (`src/app/state.js`). Modules mutate it and call the spec
 | `renderDeck` | deck.js | sound name, info chips, export menus, source waveform |
 | `renderChain` | panels/effects.js | effect cards |
 | `renderVarParams`, `renderVars` | panels/variations.js | variation settings and list |
-| `renderMix` | panels/combine.js | mode chips, sources, parameters |
+| `renderMix` | panels/combine.js | mode chips, sources, parameters; the layer stack's timeline via `renderTimeline` (panels/layers.js) |
+| `drawLayers` | panels/layers.js | the layer timeline (ruler, folder, lanes); cheap enough for every drag move |
 | `renderGenParams` | panels/generate.js | generator parameters |
 | `updateSliceInfo` | panels/slice.js | take list and markers |
 | `drawSrc`, `drawOut`, `drawGen` | draw.js | canvases |
@@ -110,6 +111,12 @@ The DSP never imports Playhead (ESLint checks). The panels turn Playhead results
 `[{ at, strength }]` for `renderAccents`, curves become 0..1 arrays for `reactionGen` and the morphs (`morphAmount`).
 With `PH.on` false none of this runs and the panels pass nothing extra, which is what makes the with/without comparison
 exact.
+
+The layer stack's timeline (`src/app/panels/layers.js`) analyses each layer as it sounds (re-pitched, reversed, at the
+mix rate) with `phPartDoc`, as a sound effect at 100 curve columns per second, so the documents combine. Its folder
+views, measures and search call Playhead's `combine`, `align`, `measureParts` and `arrange` on those documents: no
+audio is analysed again when a clip moves. Align hits and the low-end option are DSP (`layering.js`) and work with
+Playhead off.
 
 ## Saving
 

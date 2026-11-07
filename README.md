@@ -32,6 +32,10 @@ and open it in any modern browser.
   each file.
 - **Combine and morph:** layer stack, spectral morph, cross-synthesis, convolution, envelope transfer, ring multiply and
   granular weave. Spectral morph and granular weave can follow A's level (or a Playhead curve) instead of an even ramp.
+  The layer stack is a timeline: drag clips on up to four lanes under a folder lane that shows the mix, line the layers'
+  hits up to the sample (shift and polarity), and sum the low end in phase so layers stop cancelling. With Playhead on,
+  the folder shows each layer's share, the loudest layer per band and the bands two layers share, and "Find
+  arrangements" searches offsets and gains for a punchy, big or clean result.
 - **Generate** with five engines, each with dice types to roll, mutate and refine:
   - *Impact*: a physical model built as **cause → object → aftermath**. An action (hit, scrape, roll, crack) excites a
     resonant object (11 materials, 7 shapes), followed by bounces, rolling, debris and rumble. Ammo shells, coins,

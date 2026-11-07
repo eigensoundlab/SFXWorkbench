@@ -9,6 +9,7 @@ import { drawSrc, drawOut } from './draw.js';
 import { ensureOut, scheduleRender, playOutput, toggleCompare } from './output.js';
 import { renderLibrary, addSound } from './library.js';
 import { renderMix } from './panels/combine.js';
+import { drawLayers } from './panels/layers.js';
 import { updateSliceInfo } from './panels/slice.js';
 import { saveSound } from './files.js';
 import { refreshAccents } from './panels/accents.js';
@@ -47,7 +48,7 @@ export function updateExportOpts() {
 export function setView(v) {
   S.view = v;
   for (const k of ['wave', 'spec', 'ph']) $('#view-' + k).setAttribute('aria-pressed', v === k ? 'true' : 'false');
-  drawSrc(); drawOut();
+  drawSrc(); drawOut(); drawLayers();
 }
 
 /* ---------- editing ---------- */

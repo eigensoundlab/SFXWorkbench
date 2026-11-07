@@ -17,6 +17,7 @@ import { renderDeck, initDeck, edit, undo, playSource, updateSelInfo, setView } 
 import { renderChain, initEffects } from './app/panels/effects.js';
 import { renderVarParams, renderVars, initVariations } from './app/panels/variations.js';
 import { renderMix, initCombine } from './app/panels/combine.js';
+import { drawLayers } from './app/panels/layers.js';
 import { rollGenQuiet, initGenerate, drawModes, syncGenPlayhead, showGen } from './app/panels/generate.js';
 import { updateSliceInfo, initSlice } from './app/panels/slice.js';
 import { initRecorder, recorderBusy, toggleRecord } from './app/recorder.js';
@@ -36,6 +37,7 @@ function setTab(id) {
   }
   if (id === 'gen') { if (!S.gOut) rollGenQuiet(); else { drawGen(); showGen(); } }
   if (id === 'acc') refreshAccents();
+  if (id === 'mix') drawLayers();
   drawSrc();
 }
 
@@ -61,8 +63,8 @@ function initShortcuts() {
 }
 
 function initRedraw() {
-  const redraw = () => { for (const id of ['#wave-src', '#wave-out', '#wave-gen', '#wave-acc']) $(id)._c = null; drawSrc(); drawOut(); drawGen(); drawAcc(); drawModes(); };
-  new ResizeObserver(() => { drawSrc(); drawOut(); drawGen(); drawAcc(); drawModes(); }).observe($('#wave-src'));
+  const redraw = () => { for (const id of ['#wave-src', '#wave-out', '#wave-gen', '#wave-acc']) $(id)._c = null; drawSrc(); drawOut(); drawGen(); drawAcc(); drawModes(); drawLayers(); };
+  new ResizeObserver(() => { drawSrc(); drawOut(); drawGen(); drawAcc(); drawModes(); drawLayers(); }).observe($('#wave-src'));
   try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', redraw); } catch (e) { /* older browsers */ }
   new MutationObserver(redraw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'class', 'style'] });
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(redraw);
@@ -95,7 +97,7 @@ function loadExamples() {
     { src: made.gunshot.id, offset: 880, gain: 0, pitch: 0, pan: 0, reverse: false },
     { src: made.metal_hit.id, offset: 885, gain: -10, pitch: -5, pan: -20, reverse: false },
     { src: null, offset: 0, gain: 0, pitch: 0, pan: 0, reverse: false },
-  ];
+  ].map(L => ({ ...L, polarity: 1, mute: false, solo: false }));
 }
 
 /** Show or hide everything that needs Playhead analysis; with it off the app works exactly as without Playhead. */

@@ -10,6 +10,7 @@ export * from './fft.js';
 export * from './effects.js';
 export * from './stretch.js';
 export * from './morph.js';
+export * from './layering.js';
 export * from './loudness.js';
 export * from './edit.js';
 export * from './analysis.js';

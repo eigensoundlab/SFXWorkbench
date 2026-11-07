@@ -16,6 +16,11 @@ Ideas ranked roughly by value for game sound work. Open an issue before starting
 
 ## Sound design
 
+- Layer stack, next steps: trim and fade handles on clips and zoom; share the band each layer owns (a dynamic EQ that
+  turns the other layers down a few dB where one owns the band, by role: sub, body, transient, tail); duck by events
+  (a tail dips at each hit of another layer); balance by share (gains that give each layer a set share of the energy,
+  saved per sound type); variations that jitter offsets and gains while the whole stays within a tolerance; arrangement
+  goals tested by listening.
 - Playhead integration, next steps: run the analysis in a Web Worker; envelope transfer and the Reaction engine driven
   by several curves at once (level for loudness, harshness for brightness, activity for density); accent recipes
   suggested from Playhead's event types; decay check for short, damped hits (plastic, stone, rubber), which Playhead

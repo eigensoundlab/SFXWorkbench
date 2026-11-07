@@ -109,3 +109,17 @@ test('Playhead tools for levels and channels: level keeps the shape, fold to mon
   let back = 0, side = 0; for (let i = 0; i < L.length; i++) { back = Math.max(back, Math.abs(0.5 * (a[i] + b[i]) - L[i])); side += (a[i] - b[i]) ** 2; }
   assert.ok(back < 1e-6 && side > 0, `fold back ${back}`);
 });
+
+test('the vendored core combines layers and searches their arrangement', async () => {
+  const o = { profile: 'sfx', assetClass: 'sfx', curveRate: 100 };
+  const shot = await Playhead.analyze({ sampleRate: SR, channels: ex.gunshot }, o), metal = await Playhead.analyze({ sampleRate: SR, channels: ex.metal }, o);
+  const parts = [{ doc: shot, offset: 0.1, gain: 0 }, { doc: metal, offset: 0.14, gain: -6 }];
+  const whole = Playhead.combine(parts);
+  assert.equal(whole.schema, 'playhead-analysis');
+  assert.ok(Math.abs(whole.source.duration - Math.max(0.1 + shot.source.duration, 0.14 + metal.source.duration)) < 0.02);
+  const m = Playhead.measureParts(parts, { goal: 'punch' }), r = Playhead.arrange(parts, { goal: 'punch', minOffset: 0, seed: 1 });
+  assert.ok(m.rise > 0 && m.together >= 0 && m.together <= 1 && Number.isFinite(m.score));
+  assert.ok(r.evaluated > 100 && r.candidates.length >= 1 && r.candidates[0].score > r.baseline.score);
+  assert.deepEqual(r.locked, [0], 'the louder part stays');
+  for (const c of r.candidates) assert.ok(c.parts[1].offset >= 0 && Math.abs(c.parts[1].offset - 0.14) <= 0.25 + 1e-9);
+});

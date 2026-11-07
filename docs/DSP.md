@@ -55,6 +55,24 @@ block. Reference check in tests: a 997 Hz sine at −20 dBFS reads −23.0 LUFS 
   level (`levelCurve`, 10 ms RMS, −50..0 dB re the loudest window) or a Playhead curve, both mapped to 0..1 by their
   5th..95th percentile (`normalizeCurve`).
 
+## Layer stack (`layering.js`)
+
+- **Mix** (`layerMix`): each layer resampled to the mix rate, reversed and varispeed re-pitched (`prepareLayers`),
+  placed at its offset with its gain and polarity; mono layers equal-power panned, stereo ones balanced, everything
+  averaged when the mix is mono.
+- **Low end in phase** (`opts.lowAlign`, Hz): an STFT (2048 points at 48 kHz, Hann, 75 % overlap) of each layer's
+  contribution; per bin below the cutoff (quarter-octave cosine crossover) every layer is turned to the phase of the
+  layer that is strongest there, by the angle of their cross-spectrum smoothed over 40 ms. The result per bin is kept
+  between the plain sum's magnitude and the layers' power sum (no weaker, no boost), and only the difference to the
+  plain sum is added back, so the rest of the mix is the plain sum. As in Playhead's Fold to mono, which does the same
+  between two channels.
+- **Align hits** (`alignHits`): onsets per layer (`layerOnsets`: a 0.2/30 ms follower jumping 9 dB within 15 ms, 30 ms
+  apart, within 40 dB of the peak, plus the start when the sound starts loud). The loudest layer stays; for each other,
+  the pair of onsets within 20 ms with the most energy in both is its shared hit. The first 30 ms are cross-correlated
+  within ±5 ms of the onset difference, low-passed at 250 Hz when both layers carry at least a quarter of their energy
+  there; the lag and sign of the largest correlation give the shift (at most 20 ms) and polarity. A layer moves only if
+  the hit's first 30 ms get at least 1 dB stronger.
+
 ## Effects (`effects.js`)
 
 - **Reverb:** Freeverb topology (8 parallel lowpass-feedback combs, 4 series all-passes, stereo spread 23 samples),

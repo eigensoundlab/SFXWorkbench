@@ -115,6 +115,14 @@ data (events, 0..1 curves); never import the vendor module from `src/dsp`. Selec
 are hidden while Playhead is off (see `renderMix`). Draw Playhead strips only through `drawPhStrip` (Playhead decides the
 look; `PH.look` chooses it), so a new Playhead build changes the view by replacing `src/vendor/playhead-core.mjs`.
 
+**Layer stack**
+The mixer, `alignHits` and `layerOnsets` are in `src/dsp/layering.js` (`layerMix(layers, sr, { lowAlign })`). The
+timeline is `src/app/panels/layers.js`; the sliders view stays in `combine.js`, and both edit `S.layers` (each layer has
+`src`, `offset`, `gain`, `pitch`, `pan`, `reverse`, `polarity`, `mute`, `solo`). Folder views and Find arrangements use
+Playhead's `combine`, `align`, `measureParts` and `arrange` on per-layer documents from `phPartDoc` (sound effects at
+100 curve columns per second), only while `PH.on`. A new folder view is an entry in `FOLDER_VIEWS` drawn in
+`paintFolder`; a new goal is added to Playhead's `GOALS` (Playhead repository) and to `GOALS` here.
+
 **Add a morph mode**
 Add the processor to `MORPH` in `src/dsp/morph.js` (`(A, B, sr, params) => channels`; A and B already share rate and
 channel count), and a matching entry with `desc` and `params` in `MIX` in `src/config/tools.js`.

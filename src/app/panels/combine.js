@@ -12,6 +12,7 @@ import { paramRow } from '../controls.js';
 import { play } from '../audio.js';
 import { addSound } from '../library.js';
 import { PH, phDocAsync, phCurve } from '../playhead.js';
+import { renderTimeline, mixLayers, mixRate } from './layers.js';
 
 export function soundOptions(allowNone) {
   const opts = S.sounds.map(s => h('option', { value: String(s.id), text: s.name }));
@@ -27,15 +28,27 @@ export function renderMix() {
   if (!byId(S.A)) S.A = S.sounds[0] ? S.sounds[0].id : null;
   if (!byId(S.B)) S.B = S.sounds[1] ? S.sounds[1].id : S.A;
   if (S.mode === 'layer') {
-    body.replaceChildren(h('div', { class: 'layers' }, S.layers.map((L, i) => {
+    // two views of the same layers: a timeline to drag clips on (default), or one row of sliders per layer
+    const views = h('span', { class: 'seg', role: 'group', 'aria-label': 'Layer stack view' },
+      [['timeline', 'Timeline'], ['sliders', 'Sliders']].map(([v, t]) => h('button', { type: 'button', 'aria-pressed': String(S.layerView === v), onclick: () => { S.layerView = v; renderMix(); } }, t)));
+    const norm = h('label', { class: 'chk' }, h('input', { type: 'checkbox', id: 'ly-norm', checked: S.layerNorm, onchange: e => { S.layerNorm = e.target.checked; } }), h('span', { text: 'Normalize the bounce to −1 dBFS' }));
+    if (S.layerView === 'timeline') {
+      body.replaceChildren(h('div', { class: 'ly-top' }, views));
+      renderTimeline(body, soundOptions);
+      body.append(norm);
+      return;
+    }
+    body.replaceChildren(h('div', { class: 'ly-top' }, views), h('div', { class: 'layers' }, S.layers.map((L, i) => {
       const sel = h('select', { id: `ly${i}-src`, 'aria-label': `Layer ${i + 1} sound`, onchange: e => { L.src = e.target.value ? +e.target.value : null; } }, soundOptions(true));
       sel.value = L.src && byId(L.src) ? String(L.src) : '';
       return h('div', { class: 'panel layer' },
         h('span', { class: 'ab-key layer-idx', text: String(i + 1) }),
         h('div', { class: 'src-cell' }, sel),
         LAYER_SPEC.map(sp => paramRow(sp, L, () => {}, `ly${i}`)),
-        h('label', { class: 'chk' }, h('input', { type: 'checkbox', id: `ly${i}-rev`, checked: L.reverse, onchange: e => { L.reverse = e.target.checked; } }), h('span', { text: 'Reverse' })));
-    }), h('label', { class: 'chk' }, h('input', { type: 'checkbox', id: 'ly-norm', checked: S.layerNorm, onchange: e => { S.layerNorm = e.target.checked; } }), h('span', { text: 'Normalize the bounce to −1 dBFS' }))));
+        h('div', { class: 'ly-chks' },
+          h('label', { class: 'chk' }, h('input', { type: 'checkbox', id: `ly${i}-rev`, checked: L.reverse, onchange: e => { L.reverse = e.target.checked; } }), h('span', { text: 'Reverse' })),
+          h('label', { class: 'chk' }, h('input', { type: 'checkbox', id: `ly${i}-pol`, checked: L.polarity === -1, onchange: e => { L.polarity = e.target.checked ? -1 : 1; } }), h('span', { text: 'Invert' }))));
+    }), norm));
     return;
   }
   const mk = (key, label) => {
@@ -70,10 +83,10 @@ export async function renderMixResult() {
   try {
     let res, name, meta;
     if (S.mode === 'layer') {
-      const ls = S.layers.filter(l => l.src && byId(l.src));
-      if (!ls.length) throw new Error('Pick a sound for at least one layer.');
+      const ls = S.layers.filter(l => l.src && byId(l.src) && !l.mute && (!S.layers.some(x => x.solo && x.src) || l.solo));
+      if (!ls.length) throw new Error('Pick a sound for at least one layer, and unmute it.');
       meta = byId(ls[0].src);
-      const ch = D.layerMix(ls.map(l => { const s = byId(l.src); return { ch: s.ch, sr: s.sr, offset: l.offset, gain: l.gain, pitch: l.pitch, reverse: l.reverse, pan: l.pan / 100 }; }), meta.sr);
+      const ch = D.layerMix(mixLayers(), mixRate(), { lowAlign: S.layerLow });
       res = { sr: meta.sr, ch: S.layerNorm ? D.matchPeak(ch, D.dbToLin(-1)) : ch };
       name = ls.map(l => byId(l.src).name).slice(0, 3).join('+') + '_layered';
     } else {

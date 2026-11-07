@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-/** Two-sound combination: spectral morph, cross-synthesis, convolution, envelope transfer, ring multiply, granular weave, and the layer mixer. A and B must share sample rate and channel count (the UI converts B first). */
-import { TAU, clamp, rng, len, peak, matchPeak, padTo, stretchLinear, monoAbs, follower, dbToLin } from './core.js';
+/** Two-sound combination: spectral morph, cross-synthesis, convolution, envelope transfer, ring multiply and granular weave (the layer mixer is in layering.js). A and B must share sample rate and channel count (the UI converts B first). */
+import { TAU, clamp, rng, len, peak, matchPeak, padTo, stretchLinear, monoAbs, follower } from './core.js';
 import { stft, istft, smoothMag, fftConv } from './fft.js';
-import { resample, varispeed } from './resample.js';
 
 /**
  * How far a morph has gone at a point: `u` (0..1 through the result) for an even morph, or, when `p.curve` is given,
@@ -122,30 +121,3 @@ export const MORPH = {
     return matchPeak(out, Math.max(peak(A), peak(B)));
   },
 };
-/* layers: [{ch, sr, offset(ms), gain(dB), pitch(st), reverse, pan(-1..1)}] */
-export function layerMix(layers, sr) {
-  let nch = 1;
-  for (const L of layers) if (L.ch.length > 1 || Math.abs(L.pan) > 0.001) nch = 2;
-  const P = layers.map(L => {
-    let c = L.ch;
-    if (L.sr !== sr) c = resample(c, L.sr, sr);
-    if (L.reverse) c = c.map(x => x.slice().reverse());
-    if (L.pitch) c = varispeed(c, () => Math.pow(2, L.pitch / 12));
-    return { c, off: Math.max(0, Math.round(L.offset * sr / 1000)), g: dbToLin(L.gain), pan: L.pan };
-  });
-  const total = Math.max(1, ...P.map(L => L.off + len(L.c)));
-  const out = Array.from({ length: nch }, () => new Float32Array(total));
-  for (const L of P) {
-    const n = len(L.c);
-    if (nch === 1) {
-      for (const c of L.c) for (let i = 0; i < n; i++) out[0][L.off + i] += c[i] * L.g / L.c.length;
-    } else if (L.c.length === 1) {
-      const th = (L.pan + 1) * Math.PI / 4, gl = Math.cos(th) * Math.SQRT2 * L.g, gr = Math.sin(th) * Math.SQRT2 * L.g;
-      for (let i = 0; i < n; i++) { out[0][L.off + i] += L.c[0][i] * gl; out[1][L.off + i] += L.c[0][i] * gr; }
-    } else {
-      const gl = (L.pan > 0 ? 1 - L.pan : 1) * L.g, gr = (L.pan < 0 ? 1 + L.pan : 1) * L.g;
-      for (let i = 0; i < n; i++) { out[0][L.off + i] += L.c[0][i] * gl; out[1][L.off + i] += L.c[1][i] * gr; }
-    }
-  }
-  return out;
-}

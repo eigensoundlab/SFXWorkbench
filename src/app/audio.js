@@ -5,6 +5,9 @@ import { toast } from './dom.js';
 import { drawSrc, drawOut, drawGen } from './draw.js';
 
 let actx = null, P = null, raf = 0;
+const drawers = {};
+/** Let a panel draw the play position of its own playback (where): fn(sample position, or null when it stops). */
+export function onPlayhead(where, fn) { drawers[where] = fn; }
 export function ctx() {
   if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
   if (actx.state === 'suspended') actx.resume();
@@ -23,18 +26,18 @@ export function play(snd, a = 0, b = null, where = 'src', loop = false) {
   if (loop) { src.loop = true; src.start(0); }
   else src.start(0, a / snd.sr, (b - a) / snd.sr);
   P = { src, t0: c.currentTime, a, sr: snd.sr, where, end: b, loop };
-  src.onended = () => { if (P && P.src === src) { P = null; cancelAnimationFrame(raf); drawSrc(); drawOut(); drawGen(); } };
+  src.onended = () => { if (P && P.src === src) { P = null; cancelAnimationFrame(raf); drawSrc(); drawOut(); drawGen(); if (drawers[where]) drawers[where](null); } };
   tick();
 }
 export function stop(redraw = true) {
-  if (P) { try { P.src.stop(); } catch (e) { /* already stopped */ } P = null; }
+  if (P) { try { P.src.stop(); } catch (e) { /* already stopped */ } if (drawers[P.where]) drawers[P.where](null); P = null; }
   cancelAnimationFrame(raf);
   if (redraw) { drawSrc(); drawOut(); drawGen(); }
 }
 export function tick() {
   if (!P) return;
   const pos = Math.min(P.end, P.a + (actx.currentTime - P.t0) * P.sr);
-  if (!P.loop) { if (P.where === 'src') drawSrc(pos); else if (P.where === 'out') drawOut(pos); else if (P.where === 'gen') drawGen(pos); }
+  if (!P.loop) { if (P.where === 'src') drawSrc(pos); else if (P.where === 'out') drawOut(pos); else if (P.where === 'gen') drawGen(pos); else if (drawers[P.where]) drawers[P.where](pos); }
   raf = requestAnimationFrame(tick);
 }
 

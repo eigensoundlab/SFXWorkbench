@@ -1386,6 +1386,8 @@ const SFX = {
   // riseDb/bandRiseDb 8 (was 6): picked on the tuning half in 19 of 20 repeated splits by tools/tune.js --grid
   eventFloor: 40, riseDb: 8, bandRiseDb: 8, nmfK: 3, nmfIter: 150, nmfCols: 400
 };
+// An asset check: key and vars let the app show it in another language (check.<key> in i18n/<lang>.json); text is English.
+function issue(sev, key, en, vars) { return { sev, key, vars: vars || null, text: vars ? en.replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : m)) : en }; }
 const SFX_WORDS = {
   N: { impulse: "tonal hit", sustained: "tone", iterative: "tonal flutter" },
   X: { impulse: "noise hit", sustained: "noise", iterative: "grit" },
@@ -1772,28 +1774,28 @@ function sfxOf(F, buf, name) {
       else { if (run >= 3) { clipN += run; const t = (i - run) / sr; if (!clipT.length || t - clipT[clipT.length - 1] > 0.01) clipT.push(t); } run = 0; }
     }
   }
-  if (clipN) { issues.push({ sev: "bad", text: "Clipped: " + clipN + " samples in " + clipT.length + (clipT.length === 1 ? " place" : " places") }); clipT.forEach(t => marks.push({ t, kind: "clip" })); }
+  if (clipN) { issues.push(clipT.length === 1 ? issue("bad", "clippedOne", "Clipped: {n} samples in one place", { n: clipN }) : issue("bad", "clipped", "Clipped: {n} samples in {k} places", { n: clipN, k: clipT.length })); clipT.forEach(t => marks.push({ t, kind: "clip" })); }
   // DC offset
   let dc = 0;
   for (const ch of chans) { let s = 0; for (let i = 0; i < len; i++) s += ch[i]; dc = Math.max(dc, Math.abs(s / len)); }
-  if (dc > 0.005) issues.push({ sev: "warn", text: "DC offset " + (20 * Math.log10(dc)).toFixed(0) + " dBFS" });
+  if (dc > 0.005) issues.push(issue("warn", "dc", "DC offset {db} dBFS", { db: (20 * Math.log10(dc)).toFixed(0) }));
   // leading and trailing silence (below -60 dBFS)
   let li = len, ti = -1;
   for (let i = 0; i < len; i++) if (Math.max(Math.abs(L[i] - dc), Math.abs(R[i] - dc)) > 0.001) { li = i; break; }
   for (let i = len - 1; i >= 0; i--) if (Math.max(Math.abs(L[i] - dc), Math.abs(R[i] - dc)) > 0.001) { ti = i; break; }
   const lead = li / sr, trail = ti >= 0 ? (len - 1 - ti) / sr : F.dur;
-  if (lead > 0.02) issues.push({ sev: "warn", text: "Leading silence " + (lead * 1000).toFixed(0) + " ms" });
-  if (trail > 0.1) issues.push({ sev: "info", text: "Trailing silence " + (trail * 1000).toFixed(0) + " ms" });
+  if (lead > 0.02) issues.push(issue("warn", "lead", "Leading silence {ms} ms", { ms: (lead * 1000).toFixed(0) }));
+  if (trail > 0.1) issues.push(issue("info", "trail", "Trailing silence {ms} ms", { ms: (trail * 1000).toFixed(0) }));
   // abrupt start and end (a one-shot that starts on a non-zero sample clicks; a cut tail clicks)
   const isLoop = !!(name && /loop|(^|[_\- ])lp([_\- .]|$)/i.test(name));
   const rmsAt = (a, b) => { let s = 0, k = 0; for (let i = Math.max(0, a); i < Math.min(len, b); i++) { const v = 0.5 * (L[i] + R[i]) - dc; s += v * v; k++; } return Math.sqrt(k ? s / k : 0); };
   const endRms = rmsAt(len - Math.round(0.005 * sr), len);
   const abruptStart = !isLoop && Math.max(Math.abs(L[0]), Math.abs(R[0])) > 0.003;
   const abruptEnd = !isLoop && endRms > pkS * Math.pow(10, -35 / 20);
-  if (abruptStart) { issues.push({ sev: "warn", text: "First sample is not zero (click risk)" }); marks.push({ t: 0, kind: "start" }); }
-  if (abruptEnd) { issues.push({ sev: "warn", text: "Ends abruptly: tail cut at " + (20 * Math.log10(endRms / (pkS + 1e-12))).toFixed(0) + " dB below peak" }); marks.push({ t: F.dur, kind: "end" }); }
-  if (pkDb > -0.1 && !clipN) issues.push({ sev: "info", text: "Peak " + pkDb.toFixed(1) + " dBFS (no headroom)" });
-  if (identical) issues.push({ sev: "info", text: "Stereo file with identical channels: could be mono" });
+  if (abruptStart) { issues.push(issue("warn", "firstSample", "First sample is not zero (click risk)")); marks.push({ t: 0, kind: "start" }); }
+  if (abruptEnd) { issues.push(issue("warn", "cutTail", "Ends abruptly: tail cut at {db} dB below peak", { db: (20 * Math.log10(endRms / (pkS + 1e-12))).toFixed(0) })); marks.push({ t: F.dur, kind: "end" }); }
+  if (pkDb > -0.1 && !clipN) issues.push(issue("info", "noHeadroom", "Peak {db} dBFS (no headroom)", { db: pkDb.toFixed(1) }));
+  if (identical) issues.push(issue("info", "identical", "Stereo file with identical channels: could be mono"));
   // loop seam, only for files named as loops
   let seam = null;
   if (isLoop) {
@@ -1808,7 +1810,8 @@ function sfxOf(F, buf, name) {
     for (let m = e; m + 2 * k < n - e; m += k) internal.push(dist(meanWin(m), meanWin(m + k)));
     const ref = Math.max(2, internal.length ? pctl(internal, 0.9) : 2);
     seam = { jump, specDiff: sd, ref, ok: jump < 0.05 && sd <= ref };
-    issues.push(seam.ok ? { sev: "ok", text: "Loop wraps cleanly" } : { sev: "warn", text: "Loop seam: " + (jump >= 0.05 ? "sample jump " + (jump * 100).toFixed(0) + "% of peak" : "change at the wrap " + sd.toFixed(1) + " dB, file's typical " + ref.toFixed(1) + " dB") });
+    issues.push(seam.ok ? issue("ok", "loopClean", "Loop wraps cleanly") : jump >= 0.05 ? issue("warn", "seamJump", "Loop seam: sample jump {p}% of peak", { p: (jump * 100).toFixed(0) })
+      : issue("warn", "seamChange", "Loop seam: change at the wrap {db} dB, file's typical {ref} dB", { db: sd.toFixed(1), ref: ref.toFixed(1) }));
   }
 
   /* ---------- silhouette bands: 6 groups of Bark-pair loudness shares ---------- */
@@ -2653,7 +2656,8 @@ function peakOf(chans) { let p = 0; for (const ch of chans) for (let i = 0; i < 
 function scaleTo(chans, peak) { const p = peakOf(chans); if (p <= 0) return 1; const g = peak / p; for (const ch of chans) for (let i = 0; i < ch.length; i++) ch[i] *= g; return g; }
 function rng(seed) { let a = seed >>> 0; return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const db = v => 20 * Math.log10(Math.max(v, 1e-12));
-// integrated loudness, ITU-R BS.1770 (400 ms blocks, 75% overlap, -70 LUFS absolute and -10 LU relative gates)
+// integrated loudness, ITU-R BS.1770-5 (400 ms blocks, 75% overlap, -70 LUFS absolute and -10 LU relative gates;
+// test/run-tests.js checks the K-weighting, calibration and gating against the Recommendation)
 function lufsOf(chans, sr) {
   const kc = WL.kFilterCoeffs(sr), len = chans[0].length, blk = Math.round(0.4 * sr), hop = Math.round(0.1 * sr);
   const zs = chans.map(c => { const a = new Float32Array(len), b = new Float32Array(len); WL.biquadInto(c, a, kc[0]); WL.biquadInto(a, b, kc[1]); return b; });
@@ -3404,7 +3408,7 @@ const TOOLS = [
     params: [{ id: "peakDb", label: "Peak", min: -12, max: 0, step: 0.5, value: -1, unit: "dBFS" }, { id: "mono", label: "Fold identical channels to mono", type: "bool", value: true }],
     run: cleanup },
   { id: "deharsh", name: "De-harsh", kind: "Mixing",
-    desc: "Suppresses narrow resonances between 0.8 and 10 kHz and tilts down the top end while the harshness model (sharpness, roughness and fluctuation in Zwicker's annoyance form) is high. \"Harshest moments\" acts on the top of this file's own harshness range, so it works on mixes; \"Only harsh sounds\" uses the absolute scale, where most music never qualifies; \"Always\" ignores the model. The detector can be switched to the level in the same frequency range, which makes it a conventional dynamic EQ, for comparison. The second result is what was removed, raised for listening.",
+    desc: "Suppresses narrow resonances between 0.8 and 10 kHz and tilts down the top end while the harshness model (sharpness, roughness and fluctuation in Zwicker's annoyance form) is high. \"Harshest moments of this file\" acts on the top of the file's own harshness range, so it works on mixes; \"Only harsh sounds (absolute)\" uses the absolute scale, where most music never qualifies; \"Always\" ignores the model. The detector can be switched to the level in the same frequency range, which makes it a conventional dynamic EQ, for comparison. The second result is what was removed, raised for listening.",
     params: [{ id: "mode", label: "Act on", type: "select", value: "relative", options: [["relative", "Harshest moments of this file"], ["absolute", "Only harsh sounds (absolute)"], ["always", "Always"]] },
       { id: "sidechain", label: "Detector", type: "select", value: "harshness", options: [["harshness", "Harshness model"], ["level", "Band level (conventional dynamic EQ)"]] },
       { id: "amount", label: "Amount", min: 0, max: 1, step: 0.05, value: 0.6 }, { id: "threshold", label: "Absolute threshold", min: 0, max: 1.5, step: 0.05, value: 0.15, unit: "harshness" }, { id: "maxCut", label: "Deepest cut", min: 3, max: 18, step: 1, value: 9, unit: "dB" }, { id: "match", label: "Match loudness", type: "bool", value: true }, { id: "delta", label: "Also render what was removed", type: "bool", value: true }],
@@ -3429,7 +3433,7 @@ const TOOLS = [
     params: [{ id: "count", label: "Copies", min: 2, max: 6, step: 1, value: 4 }, { id: "layerDb", label: "Layer spread", min: 0, max: 6, step: 0.5, value: 3, unit: "dB" }, { id: "pitch", label: "Pitch spread", min: 0, max: 3, step: 0.1, value: 1, unit: "st" }, { id: "grains", label: "Reorder grains", type: "bool", value: true }],
     run: variations },
   { id: "tailverb", name: "Reverb on the tails", kind: "Sound design",
-    desc: "Sends only the tails of the events into a reverb: each hit from its peak to the end of its decay, so the attack stays dry and punchy and the tail blooms. An EQ cannot do this: it adds new energy after the sound and smears it in time.",
+    desc: "Sends only the tails of the events into a reverb: each hit from its peak to the end of its decay, so the attack stays dry and punchy and the tail blooms. No EQ can do this, because the tool adds new energy after each sound and spreads it in time.",
     params: [{ id: "wetDb", label: "Reverb level", min: -30, max: 0, step: 1, value: -8, unit: "dB" }, { id: "t60", label: "Decay", min: 0.3, max: 6, step: 0.1, value: 1.6, unit: "s" },
       { id: "holdMs", label: "Start after the peak", min: 0, max: 300, step: 5, value: 30, unit: "ms" }, { id: "toneHz", label: "Tone", min: 1500, max: 16000, step: 500, value: 6000, unit: "Hz" },
       { id: "dryAttacks", label: "Keep the attacks dry", type: "bool", value: true }],
@@ -3765,7 +3769,8 @@ async function build(F, buf, opts, t0, prog) {
 const FXroot = () => root.WLFX || (typeof require !== "undefined" ? require("./effects.js") : null);
 function tools() {
   const FX = FXroot(); if (!FX) return [];
-  return FX.TOOLS.map(t => ({ id: t.id, name: t.name, kind: t.kind, description: t.desc, params: Array.isArray(t.params) ? t.params.map(p => ({ id: p.id, label: p.label, type: p.type || "number", min: p.min, max: p.max, step: p.step, value: p.value, unit: p.unit || null, options: p.options || null })) : t.params }));
+  const tk = (t, rest, en) => L("lib.tool." + t.id + rest, en);
+  return FX.TOOLS.map(t => ({ id: t.id, name: tk(t, ".name", t.name), kind: t.kind, description: tk(t, ".desc", t.desc), params: Array.isArray(t.params) ? t.params.map(p => ({ id: p.id, label: tk(t, ".param." + p.id, p.label), type: p.type || "number", min: p.min, max: p.max, step: p.step, value: p.value, unit: p.unit || null, options: p.options ? p.options.map(o => [o[0], tk(t, ".opt." + p.id + "." + o[0], o[1])]) : null })) : t.params }));
 }
 async function process(input, toolId, params, opts) {
   const FX = FXroot(); if (!FX) throw new Error("Playhead.process: effects.js is not loaded");
@@ -3792,6 +3797,399 @@ function curveAt(doc, name, t, fallback) {
   return a + (b - a) * f;
 }
 
+/* ---------------- combining documents: tracks in a folder ---------------- */
+// What the sum of several sounds looks like, from their documents alone: no audio, no new analysis. For folder tracks,
+// layered sound effects and stems. parts: [{ doc, offset, gain }], offset in seconds (where the part starts in the
+// whole, default 0), gain in dB (default 0). Analyse the parts with the same profile, asset class and curveRate.
+//
+//   Playhead.align(parts, opts)    the parts on one time axis: for each part its power per column (from its LUFS) and,
+//                                  when every part has a spectrogram, its power per column and band. For views that show
+//                                  which part carries what. opts: rate (columns per second, default the first part's),
+//                                  duration (default where the last part ends).
+//   Playhead.combine(parts, opts)  a document for the whole, drawn and read like any other (doc.combined says how it
+//                                  was made). opts as for align, and wave: a waveform overview of the real sum (same
+//                                  format as doc.wave) to use instead of the estimate; aligned: align()'s result for
+//                                  the same parts and options, when the caller has it already.
+//
+// The rules (COMBINE_RULES), tested on 14 sessions built from separate parts (experiments/compose; r against the
+// analysed mix, music / impacts): LUFS and the spectrogram add as power (0.94 / 1.00, within 0.4 dB), and loudness
+// follows from the summed LUFS. Harshness is loudness plus a factor, so it is the whole's loudness plus the parts'
+// power-weighted harshness above their own loudness (0.81 / 0.97); activity, arousal and tension take the strongest
+// part (0.84 / 0.92, 0.87 / 0.99, 0.72); onsets are merged (F 0.85 / 0.93). Context-dependent ones come out rough:
+// surprise 0.51, events F 0.49 / 0.57 (three layers struck together are one event in the mix). The descriptor curves
+// follow the loudest part (not tested). Sections are left out: they need the whole.
+const COMBINE_RULES = {
+  lufs: "power sum", loudness: "from the summed LUFS", harshness: "loudness + weighted excess", arousal: "max",
+  activity: "max", tension: "max", harmonicTension: "weighted mean", surprise: "max", onsetStrength: "sum", structureNovelty: "max", localPulse: "max",
+  n1Kurtosis: "loudest", n2RepetitionHz: "loudest", n4Velocity: "loudest", n5Cpp: "loudest", n5Coherence: "loudest", n6Arrow: "loudest",
+  n7Surprisal: "max", n8Recurrence: "weighted mean"
+};
+// how far a part's gain moves its 0..1 curves (fixed scales: loudness is (LUFS + 60) / 60, harshness is loudness plus a
+// factor, arousal half loudness)
+const GAIN_SHIFT = { loudness: 1, harshness: 1, arousal: 0.5 };
+const specPowCache = typeof WeakMap !== "undefined" ? new WeakMap() : null;
+function specPower(sp) {
+  if (specPowCache && specPowCache.has(sp)) return specPowCache.get(sp);
+  const u8 = specBytes(sp), lo = sp.dbTop - sp.dbRange, out = new Float32Array(u8 ? u8.length : 0);
+  for (let i = 0; i < out.length; i++) out[i] = u8[i] ? Math.pow(10, (lo + u8[i] / 255 * sp.dbRange) / 10) : 0;
+  if (specPowCache) specPowCache.set(sp, out);
+  return out;
+}
+function align(parts, opts) {
+  opts = opts || {};
+  const ps = (parts || []).filter(p => p && p.doc && p.doc.curves && p.doc.source);
+  if (!ps.length) throw new Error("Playhead.align: no parts (expected [{ doc, offset, gain }])");
+  const rate = opts.rate || ps[0].doc.curves.rate;
+  const duration = opts.duration || Math.max(...ps.map(p => (p.offset || 0) + p.doc.source.duration));
+  const cols = Math.max(1, Math.round(duration * rate));
+  const B = ps.every(p => p.doc.spectrum && p.doc.spectrum.bands === ps[0].doc.spectrum.bands) ? ps[0].doc.spectrum.bands : 0;
+  const out = { rate, duration, columns: cols, bands: B, parts: [] };
+  for (const p of ps) {
+    const d = p.doc, off = p.offset || 0, gain = p.gain || 0, g = Math.pow(10, gain / 10), cr = d.curves.rate, lufs = d.curves.lufs || [], n = lufs.length;
+    const idx = new Int32Array(cols), power = new Float32Array(cols);
+    for (let c = 0; c < cols; c++) {
+      const t = (c + 0.5) / rate - off, i = Math.floor(t * cr);
+      idx[c] = t >= 0 && i < n ? i : -1;
+      if (idx[c] >= 0 && lufs[i] != null) power[c] = Math.pow(10, lufs[i] / 10) * g;
+    }
+    let spectrum = null;
+    if (B) {
+      const sp = d.spectrum, P = specPower(sp), sr = sp.columns / d.source.duration;
+      spectrum = new Float32Array(cols * B);
+      for (let c = 0; c < cols; c++) {
+        const t = (c + 0.5) / rate - off, j = Math.floor(t * sr);
+        if (t < 0 || j >= sp.columns) continue;
+        for (let b = 0; b < B; b++) spectrum[c * B + b] = P[j * B + b] * g;
+      }
+    }
+    out.parts.push({ doc: d, offset: off, gain, idx, power, spectrum });
+  }
+  return out;
+}
+// times from several parts in one list; times closer than gap merge into the first
+function mergeTimes(lists, gap) {
+  const all = [].concat(...lists).filter(t => t != null).sort((a, b) => a - b), out = [];
+  for (const t of all) if (!out.length || t - out[out.length - 1] > gap) out.push(t);
+  return out;
+}
+const r4 = v => Math.round(v * 1e4) / 1e4;          // rnd(v, 4) without toFixed, for the per-column loops below
+function combine(parts, opts) {
+  opts = opts || {};
+  const A = opts.aligned || align(parts, opts), cols = A.columns, rate = A.rate, dur = A.duration, ps = A.parts, first = ps[0].doc;
+  const total = new Float64Array(cols);
+  for (const p of ps) for (let c = 0; c < cols; c++) total[c] += p.power[c];
+  const val = (p, k, c) => {        // a part's value of curve k in column c, moved by its gain where the curve follows level
+    const arr = p.doc.curves[k], i = p.idx[c];
+    if (!arr || i < 0 || arr[i] == null) return null;
+    const sh = GAIN_SHIFT[k];
+    return sh && p.gain ? Math.max(0, Math.min(1, arr[i] + sh * p.gain / 60)) : arr[i];
+  };
+  const curves = { rate: rnd(rate, 6), start: 0, scale: first.curves.scale };
+  const lufs = new Array(cols), loud = new Array(cols);
+  for (let c = 0; c < cols; c++) {
+    lufs[c] = total[c] > 0 ? r4(10 * Math.log10(total[c])) : null;
+    loud[c] = lufs[c] == null ? null : r4(Math.max(0, Math.min(1, (lufs[c] + 60) / 60)));
+  }
+  curves.lufs = lufs;
+  const names = Object.keys(COMBINE_RULES).filter(k => k !== "lufs" && ps.some(p => Array.isArray(p.doc.curves[k])));
+  for (const k of names) {
+    if (k === "loudness") { curves.loudness = loud; continue; }
+    const rule = COMBINE_RULES[k], out = new Array(cols), base = /excess/.test(rule) ? GAIN_SHIFT[k] : 0;
+    for (let c = 0; c < cols; c++) {
+      if (lufs[c] == null) { out[c] = null; continue; }
+      let v = null;
+      if (rule === "max") { for (const p of ps) { const x = val(p, k, c); if (x != null && (v == null || x > v)) v = x; } }
+      else if (rule === "sum") { for (const p of ps) { const x = val(p, k, c); if (x != null) v = (v || 0) + x; } if (v != null && k === "onsetStrength") v = Math.min(1, v); }
+      else if (rule === "loudest") { let bw = 0; for (const p of ps) { const x = val(p, k, c); if (x != null && p.power[c] > bw) { bw = p.power[c]; v = x; } } }
+      else {    // weighted by each part's power; the excess rules add it to the whole's loudness
+        let s = 0, w = 0;
+        for (const p of ps) {
+          const x = val(p, k, c); if (x == null || !p.power[c]) continue;
+          const l = base ? val(p, "loudness", c) : 0;
+          s += p.power[c] * (x - base * (l == null ? 0 : l)); w += p.power[c];
+        }
+        v = w ? (base ? Math.max(0, Math.min(1, base * loud[c] + s / w)) : s / w) : null;
+      }
+      out[c] = v == null ? null : r4(v);
+    }
+    curves[k] = out;
+  }
+  // the waveform: the sum of the parts' peaks (an upper bound) and of their RMS power, unless the real one is given
+  let wave = opts.wave || null;
+  if (!wave) {
+    const wc = opts.waveColumns || 1000, mn = new Array(wc).fill(0), mx = new Array(wc).fill(0), pw = new Float64Array(wc);
+    for (const p of ps) {
+      const w = p.doc.wave, a = Math.pow(10, p.gain / 20), pd = p.doc.source.duration;
+      if (!w) continue;
+      for (let c = 0; c < wc; c++) {
+        const t = (c + 0.5) / wc * dur - p.offset; if (t < 0 || t >= pd) continue;
+        const i = Math.min(w.columns - 1, Math.floor(t / pd * w.columns));
+        mn[c] += (w.min[i] || 0) * a; mx[c] += (w.max[i] || 0) * a; pw[c] += Math.pow((w.rms[i] || 0) * a, 2);
+      }
+    }
+    wave = { columns: wc, min: mn.map(r4), max: mx.map(r4), rms: Array.from(pw, v => r4(Math.sqrt(v))), estimate: "sum of the parts' peaks" };
+  }
+  // the spectrogram: power sum, encoded like a part's (80 dB below the whole's top)
+  let spectrum = null;
+  if (A.bands) {
+    const B = A.bands, sum = new Float64Array(cols * B);
+    for (const p of ps) for (let i = 0; i < sum.length; i++) sum[i] += p.spectrum[i];
+    // the top as for a part's spectrogram: the 99.9th percentile of the cells, from a 0.1 dB histogram below the maximum
+    const db = new Float32Array(sum.length); let mxDb = -Infinity, nFin = 0;
+    for (let i = 0; i < sum.length; i++) { const v = sum[i] > 0 ? 10 * Math.log10(sum[i]) : -Infinity; db[i] = v; if (v > -Infinity) { nFin++; if (v > mxDb) mxDb = v; } }
+    let top = nFin ? mxDb : 0;
+    if (nFin) {
+      const hist = new Uint32Array(1201); for (let i = 0; i < db.length; i++) if (db[i] > -Infinity) hist[Math.min(1200, Math.round((mxDb - db[i]) * 10))]++;
+      let above = 0; const need = nFin - Math.floor(0.999 * (nFin - 1));
+      for (let k = 0; k <= 1200; k++) { above += hist[k]; if (above >= need) { top = mxDb - k / 10; break; } }
+    }
+    const lo = top - 80, u8 = new Uint8Array(cols * B);
+    for (let i = 0; i < u8.length; i++) u8[i] = db[i] > -Infinity ? Math.max(0, Math.min(255, Math.round((db[i] - lo) / 80 * 255))) : 0;
+    const s0 = first.spectrum;
+    spectrum = { scale: s0.scale, bands: B, fmin: s0.fmin, fmax: s0.fmax, columns: cols, dbTop: rnd(top, 2), dbRange: 80, encoding: "base64-u8", data: toB64(u8) };
+  }
+  // marks: onsets, events and novelty ticks merged; the beat grid of the part with the clearest pulse
+  const shift = (ts, p) => (ts || []).map(t => t + p.offset).filter(t => t >= 0 && t <= dur);
+  // a part that starts with sound has no onset at its own time 0 (nothing came before it); placed later in the whole, it has one
+  const entry = p => { const s = p.doc.summary && p.doc.summary.soundStart, on = p.doc.onsets || []; return s != null && p.offset + s > 0.05 && !(on.length && on[0] - s < 0.05) ? [s] : []; };
+  const onsets = mergeTimes(ps.map(p => shift(entry(p).concat(p.doc.onsets || []), p)), 0.03).map(t => rnd(t, 4));
+  const noveltyTicks = mergeTimes(ps.map(p => shift(p.doc.noveltyTicks, p)), 0.05).map(t => rnd(t, 4));
+  let events = null;
+  if (ps.some(p => p.doc.events)) {
+    const all = [];
+    for (const p of ps) for (const e of p.doc.events || []) {
+      const mv = t => (t == null ? null : rnd(t + p.offset, 4));
+      all.push(Object.assign({}, e, { start: mv(e.start), end: mv(e.end), decayEnd: mv(e.decayEnd), peak: mv(e.peak), peakDb: e.peakDb == null ? null : rnd(e.peakDb + p.gain, 2), grains: (e.grains || []).map(mv) }));
+    }
+    all.sort((a, b) => a.start - b.start);
+    events = [];
+    for (const e of all) {
+      const last = events[events.length - 1];
+      if (last && e.start - last.start <= 0.03) { if ((e.peakDb || -99) > (last.peakDb || -99)) events[events.length - 1] = e; }
+      else events.push(e);
+    }
+  }
+  let rhythm = null;
+  const rh = ps.filter(p => p.doc.rhythm).sort((a, b) => (b.doc.rhythm.reliable - a.doc.rhythm.reliable) || ((b.doc.rhythm.clarity || 0) - (a.doc.rhythm.clarity || 0)))[0];
+  if (rh) {
+    const r = rh.doc.rhythm, inPart = t => t >= rh.offset && t <= rh.offset + rh.doc.source.duration && t <= dur;
+    rhythm = { tempo: r.tempo, reliable: r.reliable, clarity: r.clarity, beats: r.beats.map(t => rnd(t + rh.offset, 4)).filter(inPart), downbeats: r.downbeats.map(t => rnd(t + rh.offset, 4)).filter(inPart), from: ps.indexOf(rh) };
+  }
+  const lf = lufs.filter(v => v != null).sort((a, b) => a - b), q = p => lf.length ? lf[Math.floor(p * (lf.length - 1))] : null;
+  const starts = ps.map(p => p.doc.summary && p.doc.summary.soundStart != null ? p.doc.summary.soundStart + p.offset : null).filter(v => v != null);
+  const ends = ps.map(p => p.doc.summary && p.doc.summary.soundEnd != null ? p.doc.summary.soundEnd + p.offset : null).filter(v => v != null);
+  return {
+    schema: SCHEMA, schemaVersion: SCHEMA_VERSION,
+    generator: { name: "playhead", version: VERSION },
+    source: { name: opts.name || null, sampleRate: first.source.sampleRate, channels: Math.max(...ps.map(p => p.doc.source.channels || 1)), duration: rnd(dur, 4) },
+    profile: first.profile, assetClass: first.assetClass, guessedClass: first.guessedClass,
+    summary: { peakLufs: lf.length ? rnd(lf[lf.length - 1], 2) : null, loudnessRange: lf.length ? rnd(q(0.95) - q(0.1), 2) : null, soundStart: starts.length ? rnd(Math.min(...starts), 4) : null, soundEnd: ends.length ? rnd(Math.min(dur, Math.max(...ends)), 4) : null },
+    curves, wave, spectrum, onsets, noveltyTicks, rhythm, sections: null, events, layers: null, issues: null, descriptors: null,
+    combined: { parts: ps.map(p => ({ name: p.doc.source.name, offset: rnd(p.offset, 4), gain: rnd(p.gain, 2) })), rules: Object.fromEntries(["lufs"].concat(names).map(k => [k, COMBINE_RULES[k]])) }
+  };
+}
+
+/* ---------------- arranging parts: measures of the whole and a search over offsets and gains ---------------- */
+// Because a whole can be combined from its parts' documents in about a millisecond, a computer can try hundreds of
+// arrangements a second and keep the ones that serve a goal. Everything here works from documents (no audio), on the
+// curve columns (10 ms for sound effects, 50 ms for music); a host lines the chosen arrangement up to the sample.
+//
+//   Playhead.measureParts(parts, opts)  measures of the whole for parts [{ doc, offset, gain }], around its main peak:
+//     rise      seconds the loudness takes to climb the last 20 dB into the main peak (short: a hard attack)
+//     contrast  dB the main peak stands above the 60-250 ms before it (silence before an impact makes it bigger)
+//     focus     dB the main peak stands above the 150-400 ms after it (high: short and punchy; low: long and full)
+//     together  0..1, how many of the parts that sound at the main peak start within ±8 ms of each other
+//     overlap   0..1, how many parts sound in the main hit (from 50 ms before to 100 ms after its peak, with at least
+//               3 % of the whole's energy there): spreading layers apart in time is not layering
+//     coverage  0..1, the share of frequency bands within 30 dB of the strongest one, in the 300 ms from the peak
+//     low       0..1, the share of energy below 120 Hz in those 300 ms
+//     tail      seconds until the whole falls 30 dB below the main peak
+//     shared    0..1, the share of energy in time-frequency cells where the two strongest parts are within 6 dB
+//               (where one may mask the other)
+//     harshness the whole's mean harshness (0..1, combined as in combine())
+//     and score: the goal's 0..1 score, from GOALS
+//   Playhead.arrange(parts, opts)  searches offsets and gains for opts.goal ("punch", "big" or "clean", or weights over
+//     the scores below) and returns { goal, baseline, candidates: [{ parts: [{ offset, gain }], score, measures,
+//     changes }], evaluated, ms }. Parts with lock: true stay as they are; without any, the loudest part stays.
+//     opts: range (seconds each part may move, default 0.25), gainRange ([lowest, highest] change in dB, default
+//     [-6, 3]; each dB of change costs 0.004 of score, so turning layers down is not a free win), minOffset (default
+//     0), maxOffset, count (candidates, default 6), restarts, steps, seed, maxHarshness (above it the score drops,
+//     default 0.9).
+// The goals are first heuristics to be tested by listening (see experiments/compose); the candidates are suggestions
+// to audition, not answers.
+const GOALS = {
+  punch: { punch: 1 },
+  big: { size: 1, punch: 0.25 },
+  clean: { clean: 1, punch: 0.25 }
+};
+const clip01 = v => Math.max(0, Math.min(1, v));
+// the 0..1 scores a goal combines
+function partScores(m) {
+  const sep = m.shared == null ? 0.5 : 1 - m.shared, hard = clip01(1 - (m.rise - 0.01) / 0.1);
+  return {
+    punch: 0.2 * hard + 0.1 * clip01(m.contrast / 40) + 0.2 * clip01(m.focus / 30) + 0.2 * m.together + 0.1 * sep + 0.2 * m.overlap,
+    size: 0.3 * (m.coverage == null ? 0.5 : m.coverage) + 0.25 * clip01(m.tail / 2) + 0.2 * (m.low == null ? 0 : clip01(m.low / 0.4)) + 0.15 * hard + 0.1 * m.together,
+    clean: 0.5 * sep + 0.2 * m.overlap + 0.15 * m.together + 0.15 * hard
+  };
+}
+// the parts as arrays on one column grid, ready for many evaluations
+function prepareParts(parts) {
+  const ps = (parts || []).filter(p => p && p.doc && p.doc.curves && Array.isArray(p.doc.curves.lufs));
+  if (!ps.length) throw new Error("Playhead: no parts (expected [{ doc, offset, gain }])");
+  const rate = ps[0].doc.curves.rate;
+  if (ps.some(p => Math.abs(p.doc.curves.rate / rate - 1) > 0.05)) throw new Error("Playhead: analyse every part with the same curveRate");
+  const B = ps.every(p => p.doc.spectrum && p.doc.spectrum.bands === ps[0].doc.spectrum.bands) ? ps[0].doc.spectrum.bands : 0;
+  const sp0 = B ? ps[0].doc.spectrum : null, mel = f => 2595 * Math.log10(1 + f / 700);
+  const bandOf = f => (sp0 ? Math.max(0, Math.min(B - 1, Math.floor((mel(f) - mel(sp0.fmin)) / (mel(sp0.fmax) - mel(sp0.fmin)) * (B + 1) - 0.5))) : 0);
+  const prepared = ps.map(p => {
+    // each part on the common grid, by time (a document's rate is rounded to its own length)
+    const d = p.doc, c = d.curves, own = c.lufs.length, n = Math.max(1, Math.round(d.source.duration * rate));
+    const ix = i => Math.min(own - 1, Math.floor((i + 0.5) / rate * c.rate));
+    const pow = Float64Array.from({ length: n }, (_, i) => { const v = c.lufs[ix(i)]; return v == null ? 0 : Math.pow(10, v / 10); });
+    const loud = Float64Array.from({ length: n }, (_, i) => { const v = c.loudness ? c.loudness[ix(i)] : c.lufs[ix(i)] == null ? 0 : (c.lufs[ix(i)] + 60) / 60; return v || 0; });
+    const harsh = c.harshness ? Float64Array.from({ length: n }, (_, i) => c.harshness[ix(i)] || 0) : null;
+    let spec = null;
+    if (B) {
+      const P = specPower(d.spectrum), cols = d.spectrum.columns, dur = d.source.duration;
+      spec = new Float64Array(n * B);
+      for (let i = 0; i < n; i++) { const j = Math.min(cols - 1, Math.floor((i + 0.5) / rate / dur * cols)); for (let b = 0; b < B; b++) spec[i * B + b] = P[j * B + b]; }
+    }
+    const s = d.summary && d.summary.soundStart, on = (d.onsets || []).slice();
+    if (s != null && !(on.length && on[0] - s < 0.05)) on.unshift(s);       // a part that starts with sound starts with an onset
+    return { doc: d, n, pow, loud, harsh, spec, onsets: on, offset: p.offset || 0, gain: p.gain || 0, lock: !!p.lock };
+  });
+  return { ps: prepared, rate, B, low: bandOf(120) };
+}
+// measures for offsets (seconds) and gains (dB), one per part
+function measureAt(P, offs, gains) {
+  const { ps, rate, B } = P, K = ps.length;
+  const o = offs.map(v => Math.round(v * rate)), g = gains.map(v => Math.pow(10, v / 10));
+  const C = Math.max(...ps.map((p, k) => o[k] + p.n));
+  const tot = new Float64Array(C);
+  for (let k = 0; k < K; k++) { const p = ps[k]; for (let i = 0; i < p.n; i++) { const c = o[k] + i; if (c >= 0) tot[c] += p.pow[i] * g[k]; } }
+  const L = Float64Array.from(tot, v => (v > 0 ? 10 * Math.log10(v) : -100));
+  let cp = 0; for (let c = 1; c < C; c++) if (L[c] > L[cp]) cp = c;
+  const at = w => Math.max(1, Math.round(w * rate));
+  let cr = cp; while (cr > 0 && L[cr - 1] > L[cp] - 20) cr--;
+  const rise = (cp - cr + 1) / rate;
+  let bs = 0, bk = 0; for (let c = cp - at(0.25); c <= cp - at(0.06); c++) { bs += c >= 0 ? Math.max(-60, L[c]) : -60; bk++; }
+  const contrast = Math.min(60, L[cp] - bs / Math.max(1, bk));
+  let fs = 0, fk = 0; for (let c = cp + at(0.15); c <= cp + at(0.4); c++) { fs += c < C ? Math.max(-70, L[c]) : -70; fk++; }
+  const focus = Math.min(60, L[cp] - fs / fk);
+  let ce = C; for (let c = cp + 1; c < C; c++) if (L[c] < L[cp] - 30) { ce = c; break; }
+  const tail = (ce - cp) / rate;
+  // together: the parts that sound at the peak (within 20 dB of the whole), by their onset nearest before it
+  const t0 = cp / rate, starts = [];
+  for (let k = 0; k < K; k++) {
+    const i = cp - o[k]; if (i < 0 || i >= ps[k].n || ps[k].pow[i] * g[k] < tot[cp] * 0.01) continue;
+    let best = null; for (const t of ps[k].onsets) { const a = t + o[k] / rate; if (a <= t0 + 0.02 && a >= t0 - 0.08) best = best == null || Math.abs(a - t0) < Math.abs(best - t0) ? a : best; }
+    if (best != null) starts.push(best);
+  }
+  // overlap: the parts with at least 3 % of the whole's energy in the main hit
+  const wa = Math.max(0, cp - at(0.05)), wb = Math.min(C, cp + at(0.1) + 1);
+  let wt = 0; for (let c = wa; c < wb; c++) wt += tot[c];
+  let inside = 0;
+  for (let k = 0; k < K; k++) { let e = 0; for (let c = wa; c < wb; c++) { const i = c - o[k]; if (i >= 0 && i < ps[k].n) e += ps[k].pow[i] * g[k]; } if (wt > 0 && e >= 0.03 * wt) inside++; }
+  const overlap = inside / K;
+  let together = 1;
+  if (starts.length > 1) { const s = starts.slice().sort((a, b) => a - b), med = s[Math.floor(s.length / 2)]; together = s.filter(v => Math.abs(v - med) <= 0.008).length / s.length; }
+  // the spectrum around the peak and the shared cells over the whole
+  let coverage = null, low = null, shared = null;
+  if (B) {
+    const E = new Float64Array(B), w1 = Math.min(C, cp + at(0.3));
+    let top = 0;
+    const cell = new Float64Array(K);
+    let all = 0, sh = 0;
+    for (let c = 0; c < C; c++) for (let b = 0; b < B; b++) {
+      let s = 0, p1 = 0, p2 = 0;
+      for (let k = 0; k < K; k++) { const i = c - o[k]; const v = i >= 0 && i < ps[k].n ? ps[k].spec[i * B + b] * g[k] : 0; cell[k] = v; s += v; if (v > p1) { p2 = p1; p1 = v; } else if (v > p2) p2 = v; }
+      if (c >= cp && c < w1) E[b] += s;
+      if (s > top) top = s;
+      if (s > 0) { all += s; if (p2 > 0 && p1 / p2 <= 3.981) sh += s; }
+    }
+    void top;
+    let mx = 0, sum = 0; for (let b = 0; b < B; b++) { mx = Math.max(mx, E[b]); sum += E[b]; }
+    coverage = mx > 0 ? E.filter(v => v >= mx * 1e-3).length / B : 0;
+    let lw = 0; for (let b = 0; b <= P.low; b++) lw += E[b];
+    low = sum > 0 ? lw / sum : 0;
+    shared = all > 0 ? sh / all : 0;
+  }
+  // harshness of the whole: its loudness plus the parts' weighted excess (as in combine), over the sounding columns
+  let hs = 0, hn = 0;
+  if (ps.every(p => p.harsh)) for (let c = 0; c < C; c++) {
+    if (L[c] < L[cp] - 40) continue;
+    let ex = 0, w = 0;
+    for (let k = 0; k < K; k++) { const i = c - o[k]; if (i < 0 || i >= ps[k].n || !ps[k].pow[i]) continue; const q = ps[k].pow[i] * g[k]; ex += q * (ps[k].harsh[i] - ps[k].loud[i]); w += q; }
+    hs += clip01(clip01((L[c] + 60) / 60) + (w ? ex / w : 0)); hn++;
+  }
+  return { peakLufs: rnd(L[cp], 2), peakTime: rnd(t0, 3), rise: rnd(rise, 3), contrast: rnd(contrast, 2), focus: rnd(focus, 2), together: rnd(together, 3), overlap: rnd(overlap, 3), coverage: coverage == null ? null : rnd(coverage, 3),
+    low: low == null ? null : rnd(low, 3), tail: rnd(tail, 3), shared: shared == null ? null : rnd(shared, 3), harshness: hn ? rnd(hs / hn, 3) : null };
+}
+function goalOf(goal) {
+  const w = typeof goal === "object" && goal ? goal : GOALS[goal || "punch"];
+  if (!w) throw new Error("Playhead: unknown goal " + goal + " (" + Object.keys(GOALS).join(", ") + ", or weights)");
+  return w;
+}
+function scoreOf(m, w, maxHarsh, gainChange) {
+  const s = partScores(m); let v = 0, n = 0;
+  for (const k in w) { v += w[k] * (s[k] || 0); n += Math.abs(w[k]); }
+  v = n ? v / n : 0;
+  if (m.harshness != null && m.harshness > maxHarsh) v -= 2 * (m.harshness - maxHarsh);
+  return v - 0.004 * (gainChange || 0);
+}
+function measureParts(parts, opts) {
+  opts = opts || {};
+  const P = prepareParts(parts), m = measureAt(P, P.ps.map(p => p.offset), P.ps.map(p => p.gain));
+  m.scores = Object.fromEntries(Object.entries(partScores(m)).map(([k, v]) => [k, rnd(v, 3)]));
+  m.score = rnd(scoreOf(m, goalOf(opts.goal), opts.maxHarshness == null ? 0.9 : opts.maxHarshness), 3);
+  return m;
+}
+function arrange(parts, opts) {
+  opts = opts || {};
+  const t0 = Date.now(), P = prepareParts(parts), K = P.ps.length, w = goalOf(opts.goal), maxH = opts.maxHarshness == null ? 0.9 : opts.maxHarshness;
+  const range = opts.range == null ? 0.25 : opts.range, gr = opts.gainRange || [-6, 3], step = 1 / P.rate;
+  const minO = opts.minOffset == null ? 0 : opts.minOffset, maxO = opts.maxOffset == null ? Infinity : opts.maxOffset;
+  let locked = P.ps.map(p => p.lock);
+  if (!locked.some(Boolean)) { let best = 0; P.ps.forEach((p, k) => { if (Math.max(...p.pow) * Math.pow(10, p.gain / 10) > Math.max(...P.ps[best].pow) * Math.pow(10, P.ps[best].gain / 10)) best = k; }); locked = locked.map((_, k) => k === best); }
+  const free = P.ps.map((_, k) => k).filter(k => !locked[k]);
+  const base = { offs: P.ps.map(p => p.offset), gains: P.ps.map(p => p.gain) };
+  const lim = k => [Math.max(minO, base.offs[k] - range), Math.min(maxO, base.offs[k] + range)];
+  const glim = k => [base.gains[k] + gr[0], base.gains[k] + gr[1]];
+  const snapO = v => Math.round(v / step) * step;
+  let seed = (opts.seed == null ? 12345 : opts.seed) >>> 0;
+  const rand = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  let evaluated = 0;
+  const evalState = st => { evaluated++; const m = measureAt(P, st.offs, st.gains); return { st, m, score: scoreOf(m, w, maxH, st.gains.reduce((a, v, k) => a + Math.abs(v - base.gains[k]), 0)) }; };
+  const baseline = evalState(base), pool = [];
+  const consider = r => { if (r.score > baseline.score + 1e-4) pool.push(r); };
+  const restarts = opts.restarts || 8, steps = opts.steps || 60;
+  for (let r = 0; r < restarts && free.length; r++) {
+    let curS = { offs: base.offs.slice(), gains: base.gains.slice() };
+    if (r > 0) for (const k of free) { const [a, b] = lim(k), [ga, gb] = glim(k); curS.offs[k] = snapO(a + rand() * (b - a)); curS.gains[k] = Math.round((ga + rand() * (gb - ga)) * 2) / 2; }
+    let cur = evalState(curS); consider(cur);
+    for (let s = 0; s < steps; s++) {
+      const k = free[Math.floor(rand() * free.length)], nx = { offs: cur.st.offs.slice(), gains: cur.st.gains.slice() }, big = s < steps / 2;
+      if (rand() < 0.6) { const [a, b] = lim(k); nx.offs[k] = Math.max(a, Math.min(b, snapO(nx.offs[k] + (rand() * 2 - 1) * (big ? 0.08 : 0.025)))); }
+      else { const [ga, gb] = glim(k); nx.gains[k] = Math.max(ga, Math.min(gb, Math.round((nx.gains[k] + (rand() * 2 - 1) * (big ? 3 : 1)) * 2) / 2)); }
+      const r2 = evalState(nx);
+      if (r2.score > cur.score) { cur = r2; consider(cur); }
+    }
+  }
+  // the best, kept apart: each candidate differs from the ones before by 15 ms or 1.5 dB in some part
+  pool.sort((a, b) => b.score - a.score);
+  const picked = [];
+  for (const r of pool) {
+    if (picked.length >= (opts.count || 6)) break;
+    if (picked.some(q => r.st.offs.every((v, k) => Math.abs(v - q.st.offs[k]) < 0.015) && r.st.gains.every((v, k) => Math.abs(v - q.st.gains[k]) < 1.5))) continue;
+    picked.push(r);
+  }
+  const out = r => ({
+    parts: r.st.offs.map((v, k) => ({ offset: rnd(v, 4), gain: rnd(r.st.gains[k], 2) })), score: rnd(r.score, 3), measures: r.m,
+    changes: r.st.offs.map((v, k) => ({ part: k, offset: rnd(v - base.offs[k], 4), gain: rnd(r.st.gains[k] - base.gains[k], 2) })).filter(c => Math.abs(c.offset) > 1e-4 || Math.abs(c.gain) > 0.01)
+  });
+  return { goal: opts.goal || "punch", weights: w, locked: locked.map((v, k) => (v ? k : -1)).filter(k => k >= 0), baseline: { score: rnd(baseline.score, 3), measures: baseline.m }, candidates: picked.map(out), evaluated, ms: Date.now() - t0 };
+}
+
 /* ---------------- markers for editors and engines ---------------- */
 // { kind: "region" | "marker", start, end?, name } sorted by time: sections as regions, downbeats and events as markers
 function toMarkers(doc, opts) {
@@ -3814,7 +4212,7 @@ function toMarkers(doc, opts) {
 //                                      (default [0, 1]; the 5th-95th percentile for the descriptor curves n1-n8)
 //   { type: "lane", curve, signed }   a curve in its own lane under the waveform. signed: for change curves such as
 //                                      structureNovelty; drawn up where the level rises across the change (an entry),
-//                                      down where it falls (a drop, a break into silence) and centred where the level
+//                                      down where it falls (a fall in level, a break into silence) and centred where the level
 //                                      stays and only the material changes, so a break never reads as "more"
 //   { type: "sections" }              boundaries and letters (music profile; a letter repeats when material returns)
 //   { type: "ticks", of: [...] }      marks under the waveform: "events", "onsets", "beats", "downbeats", and from the
@@ -3851,7 +4249,7 @@ const LOOKS = {
   auto: { name: "Automatic", desc: "Sound effects: harshness as colour, activity as the line, events. Music: activity as colour, tension as the line, sections, downbeats.", code: null },
   plain: { name: "Waveform only", desc: "The waveform without analysis, for comparison.", code: "wave" },
   spectrum: { name: "Spectrogram", desc: "A standard spectrogram (mel scale, 40 Hz to 16 kHz), for comparison.", code: "spec" },
-  structure: { name: "Structure", desc: "Sections, structural change (up: entry, down: drop or break) and the local pulse under a plain waveform.", code: "wave,sections,lane:structureNovelty~signed,lane:localPulse,ticks:downbeats" },
+  structure: { name: "Structure", desc: "Sections, structural change (up: entry, down: fall or break) and the local pulse under a plain waveform.", code: "wave,sections,lane:structureNovelty~signed,lane:localPulse,ticks:downbeats" },
   rhythm: { name: "Rhythm", desc: "Activity as colour, the local pulse, beats and downbeats.", code: "wave:activity,lane:localPulse,ticks:beats+downbeats" },
   tension: { name: "Tension", desc: "Harshness as colour, tension as the line, sections.", code: "wave:harshness,sections,line:tension,ticks:downbeats" },
   events: { name: "Events", desc: "Harshness as colour, activity in a lane, events marked.", code: "wave:harshness,lane:activity,ticks:events" },
@@ -3866,6 +4264,24 @@ const LOOKS = {
   hits: { name: "Hits and pulse", desc: "The waveform with onset strength (where the hits are) and the local pulse as lanes, beats and bar lines.", code: "wave,lane:onsetStrength,lane:localPulse,ticks:beats+downbeats" },
   sculpted: { name: "Waveform as loud as it sounds", desc: "The waveform's envelope follows perceived loudness (a dB-like scale) while its detail stays; colour shows harshness, with the ordinary peak outline for comparison.", code: "sculpt:loudness,wave:harshness,outline,ticks:events+novelty" }
 };
+
+/* ---------------- labels in other languages ---------------- */
+// An app passes its translation table to localize(); keys: lib.curve.<name>, lib.look.<id>.name and .desc,
+// lib.tool.<id>.name, .desc, .param.<param>, .opt.<param>.<value>, lib.legend.<phrase>, lib.mark.<kind>.
+// localize(null) restores English. Analysis documents never change: only labels do.
+let LT = null;
+const EN_LABELS = { curves: Object.assign({}, CURVE_LABELS), looks: Object.fromEntries(Object.entries(LOOKS).map(([k, v]) => [k, { name: v.name, desc: v.desc }])) };
+function L(key, en, vars) {
+  let s = LT && Object.prototype.hasOwnProperty.call(LT, key) ? LT[key] : en;
+  if (vars) s = String(s).replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : m));
+  return s;
+}
+function localize(table) {
+  LT = table || null;
+  for (const k in EN_LABELS.curves) CURVE_LABELS[k] = L("lib.curve." + k, EN_LABELS.curves[k]);
+  for (const k in EN_LABELS.looks) { LOOKS[k].name = L("lib.look." + k + ".name", EN_LABELS.looks[k].name); LOOKS[k].desc = L("lib.look." + k + ".desc", EN_LABELS.looks[k].desc); }
+  return !!LT;
+}
 const isSfxDoc = doc => doc.profile === "sfx" || doc.assetClass === "sfx";
 // the layers the renderer drew before looks existed; still the default, and still driven by the old options
 function legacyLayers(doc, opts) {
@@ -3907,26 +4323,27 @@ const optionOf = (layers, type, dflt) => { const l = (layers || []).find(x => x.
 /** Plain-language description of layers, for a legend beside the strip. */
 function describeLook(layers, doc) {
   const lab = k => CURVE_LABELS[k] || k, has = k => !doc || (doc.curves && Array.isArray(doc.curves[k]));
+  const mark = r => r === "downbeats" ? L("lib.mark.downbeats", "bar lines") : L("lib.mark." + r, r);
   const parts = [], form = optionOf(layers, "form", "lanes"), shape = optionOf(layers, "shape", "base");
-  const lanes = (layers || []).filter(l => l.type === "lane");
+  const lanes = (layers || []).filter(l => l.type === "lane"), absent = L("lib.legend.absent", " (not in this analysis)");
   for (const l of layers || []) {
-    if (l.type === "wave") parts.push(l.colour && has(l.colour) ? "colour: " + lab(l.colour) : "waveform");
-    else if (l.type === "spec") parts.push(!doc || doc.spectrum ? "spectrogram (mel, low at the bottom)" : "spectrogram (not in this analysis)");
-    else if (l.type === "outline") parts.push("outline: peak waveform");
-    else if (l.type === "sculpt") parts.push(!(layers || []).some(x => x.type === "wave") ? "height: " + lab(l.curve) + " (shapes the waveform; add it to see)" : has(l.curve) ? "height: " + lab(l.curve) : "height: " + lab(l.curve) + " (not in this analysis)");
-    else if (l.type === "line" && has(l.curve)) parts.push("line: " + lab(l.curve));
-    else if (l.type === "lane") parts.push((form === "overlay" ? ((layers || []).some(x => x.type === "wave" || x.type === "spec") ? "over the waveform: " : "overlaid: ") : "lane: ") + lab(l.curve) + (has(l.curve) ? (l.signed ? " (up: entry, down: drop or break, centred: same level)" : "") : " (not in this analysis)"));
-    else if (l.type === "sections" && (!doc || doc.sections)) parts.push("letters: sections");
+    if (l.type === "wave") parts.push(l.colour && has(l.colour) ? L("lib.legend.colour", "colour: {curve}", { curve: lab(l.colour) }) : L("lib.legend.waveform", "waveform"));
+    else if (l.type === "spec") parts.push(!doc || doc.spectrum ? L("lib.legend.spectrogram", "spectrogram (mel, low at the bottom)") : L("lib.legend.spectrogramAbsent", "spectrogram (not in this analysis)"));
+    else if (l.type === "outline") parts.push(L("lib.legend.outline", "outline: peak waveform"));
+    else if (l.type === "sculpt") parts.push(L("lib.legend.height", "height: {curve}", { curve: lab(l.curve) }) + (!(layers || []).some(x => x.type === "wave") ? L("lib.legend.heightNoWave", " (shapes the waveform; add it to see)") : has(l.curve) ? "" : absent));
+    else if (l.type === "line" && has(l.curve)) parts.push(L("lib.legend.line", "line: {curve}", { curve: lab(l.curve) }));
+    else if (l.type === "lane") parts.push((form === "overlay" ? ((layers || []).some(x => x.type === "wave" || x.type === "spec") ? L("lib.legend.overWave", "over the waveform: {curve}", { curve: lab(l.curve) }) : L("lib.legend.overlaid", "overlaid: {curve}", { curve: lab(l.curve) })) : L("lib.legend.lane", "lane: {curve}", { curve: lab(l.curve) })) + (has(l.curve) ? (l.signed ? L("lib.legend.signed", " (up: entry, down: fall or break, centred: same level)") : "") : absent));
+    else if (l.type === "sections" && (!doc || doc.sections)) parts.push(L("lib.legend.sections", "letters: sections"));
     else if (l.type === "ticks" && l.of) {
       const rh = r => r === "beats" || r === "downbeats";
       const ok = r => !doc || (r === "events" ? !!doc.events : r === "onsets" ? !!doc.onsets : r === "novelty" ? !!(doc.noveltyTicks && doc.noveltyTicks.length) : !!doc.rhythm);
-      const of = l.of.filter(ok).map(r => r === "downbeats" ? "bar lines" : r);
-      if (of.length) parts.push("marks: " + of.join(", ") + (doc && doc.rhythm && !doc.rhythm.reliable && l.of.some(rh) ? " (no steady beat: beats faint)" : ""));
-      const missing = l.of.filter(r => !ok(r)).map(r => r === "downbeats" ? "bar lines" : r);
-      if (missing.length) parts.push(missing.join(", ") + ": not in this analysis" + (missing.some(m => m === "beats" || m === "bar lines") ? " (music only)" : ""));
+      const of = l.of.filter(ok).map(mark);
+      if (of.length) parts.push(L("lib.legend.marks", "marks: {list}", { list: of.join(", ") }) + (doc && doc.rhythm && !doc.rhythm.reliable && l.of.some(rh) ? L("lib.legend.beatsFaint", " (no steady beat: beats faint)") : ""));
+      const missing = l.of.filter(r => !ok(r));
+      if (missing.length) parts.push(L("lib.legend.missing", "{list}: not in this analysis", { list: missing.map(mark).join(", ") }) + (missing.some(rh) ? L("lib.legend.musicOnly", " (music only)") : ""));
     }
   }
-  if (lanes.length && shape !== "base") parts.push(shape === "mirror" ? "curves mirrored like a waveform" : shape === "horizon" ? "horizon charts (darker = higher)" : "curves as lines");
+  if (lanes.length && shape !== "base") parts.push(shape === "mirror" ? L("lib.legend.mirror", "curves mirrored like a waveform") : shape === "horizon" ? L("lib.legend.horizon", "horizon charts (darker = higher)") : L("lib.legend.lines", "curves as lines"));
   return parts.join(" · ");
 }
 function autoRange(name, arr) {
@@ -4191,7 +4608,7 @@ function drawStrip(ctx, doc, opts) {
   return { code: lookCode(layers), layers, legend: describeLook(layers, doc), items };
 }
 
-const api = { version: VERSION, schema: SCHEMA, schemaVersion: SCHEMA_VERSION, profiles: PROFILES, analyze, fromAnalysis, process, tools, toMarkers, curveAt, drawStrip, parseLook, lookCode, describeLook, lookFits, looks: LOOKS, curveLabels: CURVE_LABELS, forms: FORMS, shapes: SHAPES, theme: DEFAULT_THEME, internals: { WL, PHD, get FX() { return FXroot(); } } };
+const api = { version: VERSION, schema: SCHEMA, schemaVersion: SCHEMA_VERSION, profiles: PROFILES, analyze, fromAnalysis, process, tools, toMarkers, curveAt, align, combine, combineRules: COMBINE_RULES, measureParts, arrange, goals: GOALS, drawStrip, parseLook, lookCode, describeLook, lookFits, looks: LOOKS, curveLabels: CURVE_LABELS, localize, forms: FORMS, shapes: SHAPES, theme: DEFAULT_THEME, internals: { WL, PHD, get FX() { return FXroot(); } } };
 if (typeof module !== "undefined" && module.exports) module.exports = api;
 root.Playhead = api;
 })(__ph);

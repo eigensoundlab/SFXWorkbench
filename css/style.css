@@ -15,6 +15,7 @@
   --wave: #2a3442;
   --wave-out: #1d6c69;
   --danger: #b63a2c;
+  --layer-1: #3266c4; --layer-2: #b87d09; --layer-3: #1f8a6a; --layer-4: #a7468c;
   --f-display: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
   --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -24,12 +25,14 @@
   :root:not([data-theme="light"]) {
     --bg: #101317; --panel: #171b21; --well: #1e232a; --ink: #e1e6ec; --muted: #8f99a6; --line: #2c333c;
     --accent: #efb03c; --accent-ink: #1c1405; --accent-text: #f1bb55; --wave: #c7d0da; --wave-out: #5fb9b4; --danger: #ef7465;
+    --layer-1: #6f9cf0; --layer-2: #e9b44a; --layer-3: #4fc49a; --layer-4: #d77dbd;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #101317; --panel: #171b21; --well: #1e232a; --ink: #e1e6ec; --muted: #8f99a6; --line: #2c333c;
   --accent: #efb03c; --accent-ink: #1c1405; --accent-text: #f1bb55; --wave: #c7d0da; --wave-out: #5fb9b4; --danger: #ef7465;
+  --layer-1: #6f9cf0; --layer-2: #e9b44a; --layer-3: #4fc49a; --layer-4: #d77dbd;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -328,3 +331,41 @@ body.is-drop::after {
 .ph-tools { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; padding: 12px 14px; }
 .ph-tools h2 { margin: 0; }
 .ph-tools .chips .chip { white-space: normal; overflow-wrap: anywhere; }
+
+/* Layer stack: timeline view */
+.ly-top { margin-bottom: 10px; }
+.ly-chks { display: flex; flex-direction: column; gap: 4px; }
+.tl { display: grid; gap: 10px; margin-bottom: 10px; }
+.tl-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.tl-bar label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
+.tl-bar label select { color: var(--ink); }
+.tl-grid { position: relative; display: grid; grid-template-columns: minmax(250px, 330px) minmax(0, 1fr); gap: 8px 12px; align-items: center; }
+.tl-cv { display: block; width: 100%; border-radius: 3px; background: var(--well); touch-action: pan-y; cursor: pointer; }
+.tl-lane:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tl-lane.is-drag { cursor: grabbing; }
+.tl-head { min-width: 0; }
+.tl-head-layer { border-left: 3px solid var(--lc); padding-left: 8px; }
+.tl-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tl-line select { flex: 1 1 auto; min-width: 0; }
+.tl-ms { display: inline-flex; gap: 3px; flex: none; }
+.btn.tl-tog { min-height: 26px; min-width: 26px; padding: 2px 6px; font: 600 11px/1 var(--f-mono); }
+.btn.tl-tog[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.tl-prms { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 12px; margin-top: 6px; }
+.tl-prms .prm { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; gap: 0 4px; }
+.tl-prms .prm > label { grid-column: 1 / -1; font-size: 11px; }
+.tl-prms .prm output { font-size: 11px; }
+.tl-fdesc { margin: 2px 0 4px; font-size: 11.5px; }
+.tl-measures .chip { font-size: 11px; padding: 3px 5px; }
+.chip.strong { color: var(--ink); border-color: var(--muted); }
+.tl-line-play { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; }
+.tl-search { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 8px; }
+.tl-cands { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.tl-cands:empty { display: none; }
+.tl-cand { border: 1px solid var(--line); border-radius: var(--r); background: var(--panel); padding: 8px 10px; display: grid; gap: 6px; align-content: start; }
+.tl-cand .chip { font-size: 11px; padding: 3px 5px; }
+.tl-cand-cv { display: block; width: 100%; height: 40px; border-radius: 3px; }
+.tl-cand-acts { display: flex; gap: 6px; }
+@media (max-width: 760px) {
+  .tl-grid { grid-template-columns: minmax(0, 1fr); }
+  .tl-prms { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

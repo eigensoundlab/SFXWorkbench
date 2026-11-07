@@ -11,7 +11,15 @@ import { renderLookBar } from './lookbar.js';
 
 export function tokens() {
   const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
-  return { well: g('--well'), wave: g('--wave'), out: g('--wave-out'), line: g('--line'), muted: g('--muted'), accent: g('--accent'), danger: g('--danger'), ink: g('--ink') };
+  return { well: g('--well'), wave: g('--wave'), out: g('--wave-out'), line: g('--line'), muted: g('--muted'), accent: g('--accent'), danger: g('--danger'), ink: g('--ink'),
+    layers: [1, 2, 3, 4].map(k => g('--layer-' + k)) };
+}
+/** Colours for Playhead strips from the theme tokens (out: the output lane's colours). */
+export function phTheme(T, out) {
+  const wc = out ? T.out : T.wave, full = hexRgb(wc), faint = hexRgb(T.well).map((v, i) => Math.round(v + (full[i] - v) * 0.3));
+  return { wave: wc, waveLow: faint, waveHigh: full, line: T.accent, tick: T.ink, text: T.ink, rule: T.muted,
+    lane: out ? T.wave : T.out, laneDown: T.accent, laneFlat: T.muted, series: [T.ink, T.muted], outline: T.muted, halo: T.well,
+    specRamp: [hexRgb(T.well), hexRgb(T.out), hexRgb(T.accent)] };
 }
 export function hexRgb(hx) { const m = /^#?([0-9a-f]{6})$/i.exec(hx || ''); if (!m) return [128, 128, 128]; const v = parseInt(m[1], 16); return [v >> 16 & 255, v >> 8 & 255, v & 255]; }
 export function drawPeaks(g, chs, W, H, color, line, danger) {
@@ -71,13 +79,10 @@ export function drawWave(cv, snd, o) {
     if (view === 'spec') drawSpec(off, snd, T);
     else {
       const og = off.getContext('2d'); og.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const wc = o.out ? T.out : T.wave, full = hexRgb(wc), faint = hexRgb(T.well).map((v, i) => Math.round(v + (full[i] - v) * 0.3));
       // calm passages faint, harsh ones in the full waveform colour (red stays reserved for clipping); the spectrogram
       // uses the same colours as the Spectrum view
-      if (doc) drawPhStrip(og, doc, W, H, { wave: wc, waveLow: faint, waveHigh: full, line: T.accent, tick: T.ink, text: T.ink, rule: T.muted,
-        lane: o.out ? T.wave : T.out, laneDown: T.accent, laneFlat: T.muted, series: [T.ink, T.muted], outline: T.muted, halo: T.well,
-        specRamp: [hexRgb(T.well), hexRgb(T.out), hexRgb(T.accent)] });
-      else drawPeaks(og, snd.ch, W, H, wc, T.line, T.danger);
+      if (doc) drawPhStrip(og, doc, W, H, phTheme(T, o.out));
+      else drawPeaks(og, snd.ch, W, H, o.out ? T.out : T.wave, T.line, T.danger);
     }
     cv._c = { key, off };
   }

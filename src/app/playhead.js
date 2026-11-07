@@ -45,14 +45,14 @@ export const PH_CURVES = { loudness: 'loudness', activity: 'activity', arousal: 
 const cache = new Map(), latest = {};
 let queue = Promise.resolve();
 
-function entry(key, snd, slot) {
+function entry(key, snd, slot, opts) {
   let e = cache.get(key);
   if (e) { cache.delete(key); cache.set(key, e); return e; }
   e = { state: 'pending', doc: null, waiters: new Set() };
   e.promise = queue.then(async () => {
     if (slot && latest[slot] !== key) { cache.delete(key); return null; }
     const long = D.len(snd.ch) / snd.sr > LONG_S;
-    return Playhead.analyze({ sampleRate: snd.sr, channels: snd.ch }, { profile: long ? 'fast' : 'sfx' });
+    return Playhead.analyze({ sampleRate: snd.sr, channels: snd.ch }, Object.assign({ profile: long ? 'fast' : 'sfx' }, opts));
   }).then(doc => {
     if (!doc) { e.state = 'dropped'; return null; }
     e.state = 'ready'; e.doc = doc;
@@ -86,6 +86,29 @@ export function phDocAsync(key, snd, slot) {
   if (!PH.on || !snd || !D.len(snd.ch)) return Promise.resolve(null);
   if (slot) latest[slot] = key;
   return entry(key, snd, slot).promise;
+}
+/**
+ * The document of a layer as it sounds in the layer stack (`snd` already re-pitched and reversed). Layers are analysed
+ * alike, as sound effects at 100 curve columns per second, so their documents combine (Playhead.combine, arrange).
+ */
+export function phPartDoc(key, snd, onReady) {
+  if (!PH.on || !snd || !D.len(snd.ch)) return null;
+  const e = entry('part:' + key, snd, null, { assetClass: 'sfx', curveRate: 100 });
+  if (e.state === 'ready') return e.doc;
+  if (onReady && e.state === 'pending') e.waiters.add(onReady);
+  return null;
+}
+/** Whether this Playhead build combines and arranges documents (0.3 and later). */
+export const PH_PARTS = typeof Playhead.combine === 'function' && typeof Playhead.arrange === 'function';
+/** The whole of the layers from their documents (parts: [{ doc, offset (s), gain (dB) }]): a document, its parts on one
+ *  time axis, its measures, and a search for arrangements. See Playhead's docs/INTEGRATION.md. */
+export const phCombine = (parts, opts) => Playhead.combine(parts, opts);
+export const phAlignParts = (parts, opts) => Playhead.align(parts, opts);
+export const phMeasureParts = (parts, opts) => Playhead.measureParts(parts, opts);
+export const phArrange = (parts, opts) => Playhead.arrange(parts, opts);
+/** Draw any document in a given look (default: the current one). */
+export function drawPhDoc(g, doc, W, H, colors, look) {
+  return Playhead.drawStrip(g, doc, { width: W, height: H, look: look || PH.look, theme: { background: null, ...colors } });
 }
 /** 'ready', 'pending', 'error' or 'none' for a key. */
 export const phStatus = key => (cache.get(key) || { state: 'none' }).state;
