@@ -341,9 +341,10 @@ async function extractFeatures(buf, onProgress, opts) {
    Helpers for stage 2
    =================================================================== */
 function prefix(a) { const p = new Float64Array(a.length + 1); for (let i = 0; i < a.length; i++) p[i + 1] = p[i] + a[i]; return p; }
-function movMean(a, half) {
+// pad: silence beyond the ends counts (the mean over the whole window), rather than the window shrinking at the ends
+function movMean(a, half, pad) {
   const p = prefix(a), n = a.length, o = new Float32Array(n);
-  for (let i = 0; i < n; i++) { const s = Math.max(0, i - half), e = Math.min(n, i + half + 1); o[i] = (p[e] - p[s]) / (e - s); }
+  for (let i = 0; i < n; i++) { const s = Math.max(0, i - half), e = Math.min(n, i + half + 1); o[i] = (p[e] - p[s]) / (pad ? 2 * half + 1 : e - s); }
   return o;
 }
 function movMax(a, half) {
@@ -383,10 +384,10 @@ function runMAD(a, half, step) {
     return d[d.length >> 1];
   });
 }
-function asym(a, dt, ta, tr) {
+function asym(a, dt, ta, tr, y0) {
   const n = a.length, o = new Float32Array(n);
   const aa = 1 - Math.exp(-dt / ta), ar = 1 - Math.exp(-dt / tr);
-  let y = a[0] || 0;
+  let y = y0 != null ? y0 : a[0] || 0;
   for (let i = 0; i < n; i++) { const x = a[i]; y += (x > y ? aa : ar) * (x - y); o[i] = y; }
   return o;
 }
@@ -734,12 +735,20 @@ function computeCurves(F, cls, opt) {
   const X = baseOf(F);
   const gate = X.gate;
 
-  /* C1 perceptual loudness: K-weighted, class window, one-pole in the dB domain */
+  /* C1 perceptual loudness: K-weighted, class window, one-pole in the dB domain. The file is heard with silence before
+     and after it: the window counts silence beyond the ends, and the attack has already run from silence through the
+     half window before the start, where the file's first moments come into the window. A sound that starts at once
+     then rises as it would inside a longer recording, and documents of clips add up to the document of their mix. */
   const lwHalf = Math.max(0, Math.round(C.lw / dt / 2));
-  const kzW = lwHalf > 0 ? movMean(F.kz, lwHalf) : Float32Array.from(F.kz);
+  const kzW = lwHalf > 0 ? movMean(F.kz, lwHalf, true) : Float32Array.from(F.kz);
   const lraw = new Float32Array(n);
   for (let m = 0; m < n; m++) lraw[m] = Math.max(-70, -0.691 + 10 * Math.log10(kzW[m] + 1e-15));
-  const lufs = asym(lraw, dt, C.ta * 0.5, C.tr * 0.5);
+  const pre = new Float32Array(lwHalf);
+  for (let i = 0, s = 0; i < lwHalf; i++) {      // frame i - lwHalf: its window holds frames 0 .. i
+    s += i < n ? F.kz[i] : 0;
+    pre[i] = Math.max(-70, -0.691 + 10 * Math.log10(s / (2 * lwHalf + 1) + 1e-15));
+  }
+  const lufs = asym(lraw, dt, C.ta * 0.5, C.tr * 0.5, lwHalf ? asym(pre, dt, C.ta * 0.5, C.tr * 0.5, -70)[lwHalf - 1] : -70);
   const c1 = new Float32Array(n);
   for (let m = 0; m < n; m++) c1[m] = clamp01((lufs[m] + 60) / 60);
 
@@ -968,6 +977,20 @@ function rhythmOf(F) {
     clarW[w] = Math.min(1, mx) * (1 - Math.exp(-wS[w] / RHYTHM.strengthRef));
   }
 
+  /* tempogram for display: the clarity autocorrelation (mean removed, so only periodicity counts) on a log-tempo axis,
+     24 bins per octave from bpmMin, faded where the onsets are weak, as for clarity. One column per window. */
+  const TG_OCT = 24, tgBins = Math.floor(TG_OCT * Math.log2(RHYTHM.bpmMax / RHYTHM.bpmMin) + 1e-9) + 1;
+  const tgData = new Float32Array(NW * tgBins);
+  if (nL > 1) for (let k = 0; k < tgBins; k++) {
+    const x = 60 / (RHYTHM.bpmMin * Math.pow(2, k / TG_OCT) * dt) - lagMin, i = Math.floor(x), f = x - i;
+    if (x < 0 || i >= nL - 1) continue;
+    for (let w = 0; w < NW; w++) {
+      const v = acm[w * nL + i] * (1 - f) + acm[w * nL + i + 1] * f;
+      tgData[w * tgBins + k] = Math.max(0, v) * (1 - Math.exp(-wS[w] / RHYTHM.strengthRef));
+    }
+  }
+  const tempogram = { bpmMin: RHYTHM.bpmMin, perOctave: TG_OCT, bins: tgBins, start: centers[0] * dt, hop: hopT * dt, cols: NW, data: tgData };
+
   /* global tempo: mean tempogram over active windows + log-normal prior (librosa style) */
   const mean = new Float64Array(nL);
   let act = 0;
@@ -1165,7 +1188,7 @@ function rhythmOf(F) {
     tempoRange: [q(0.05), q(0.95)],
     beats, plpBeats, downbeats, downConf, downPhase,
     beatTimes: beats.map(frameTime), plpTimes: plpBeats.map(frameTime), downTimes: downbeats.map(frameTime),
-    onsetTimes: X.onsets.map(m => m * dt)
+    onsetTimes: X.onsets.map(m => m * dt), tempogram
   };
   return F._rhythm;
 }
@@ -1348,7 +1371,30 @@ function structureOf(F) {
   const tc = [], vc = [];
   for (let u = 0; u < U; u++) { tc.push(starts[u] * dt); vc.push(nv[u]); }
   const nov = interpTimes(tc, vc, n, dt);
-  F._struct = { units: U, useBeats, blk, L, nov, bounds: bnd.map(u => starts[u] * dt), segs, tooShort: false };
+
+  /* time-lag view of the self-similarity, for display: how alike each unit is to the unit a lag earlier. Columns group
+     units (at most 256 columns); rows are lags, grouped to 1, 2, 4, 8... units so that with beats a row is a whole number
+     of bars from 4 beats up (at most 128 rows). Row l is centred on a lag of (l + 1) * lstep units and takes the best match
+     within half a step either side; 0 marks no data (before the start of the sound). */
+  const tstep = Math.ceil(U / 256);
+  let lstep = 1; while (Math.floor((U - 1) / lstep) > 128) lstep *= 2;
+  const nLag = Math.max(1, Math.floor((U - 1) / lstep)), cols = Math.ceil(U / tstep);
+  const lagU8 = new Uint8Array(cols * nLag), lagTimes = [];
+  for (let c = 0; c < cols; c++) {
+    const ua = c * tstep, ub = Math.min(U, ua + tstep);
+    lagTimes.push(starts[ua] * dt);
+    for (let l = 0; l < nLag; l++) {
+      const ka = Math.max(1, Math.ceil((l + 0.5) * lstep)), kb = Math.max(ka + 1, Math.ceil((l + 1.5) * lstep));
+      let s = 0, cnt = 0;
+      for (let u = ua; u < ub; u++) {
+        let best = -1; for (let k = ka; k < kb && u - k >= 0; k++) { const v = S[u * U + u - k]; if (v > best) best = v; }
+        if (best >= 0) { s += best; cnt++; }
+      }
+      lagU8[c * nLag + l] = cnt ? 1 + Math.round(254 * s / cnt) : 0;
+    }
+  }
+  const lag = { lstep, nLag, cols, times: lagTimes, data: lagU8 };
+  F._struct = { units: U, useBeats, blk, L, nov, bounds: bnd.map(u => starts[u] * dt), segs, tooShort: false, lag };
   return F._struct;
 }
 
@@ -3756,6 +3802,15 @@ async function build(F, buf, opts, t0, prog) {
     for (let m = 0; m < F.nF; m++) pulse[m] = R.plp[m] * Math.min(1, R.clarity[m] / 0.6);
     doc.curves.structureNovelty = resample(St.nov, F, cols, null, "max");
     doc.curves.localPulse = resample(pulse, F, cols, null, "max");
+    // the tempogram and the repetition (time-lag) view, as small images for the "spec:tempo" and "spec:lag" looks
+    const TG = R.tempogram;
+    if (TG && TG.cols) {
+      let pk = 1e-9; for (const v of TG.data) if (v > pk) pk = v;
+      const u8 = Uint8Array.from(TG.data, v => Math.round(255 * Math.min(1, v / pk)));
+      doc.rhythm.tempogram = { bpmMin: TG.bpmMin, perOctave: TG.perOctave, bins: TG.bins, start: rnd(TG.start, 3), hop: rnd(TG.hop, 4), columns: TG.cols, peak: rnd(pk, 4), encoding: "base64-u8", data: toB64(u8) };
+    }
+    const LG = St.lag;
+    if (LG) doc.repetition = { unit: St.useBeats ? "beat" : "time", unitSeconds: rnd(St.blk, 4), lagStep: LG.lstep, lags: LG.nLag, columns: LG.cols, times: LG.times.map(t => rnd(t, 3)), encoding: "base64-u8", data: toB64(LG.data) };
   }
   doc.timing = { ms: Date.now() - t0 };
   prog(1);
@@ -3798,6 +3853,13 @@ function curveAt(doc, name, t, fallback) {
 }
 
 /* ---------------- combining documents: tracks in a folder ---------------- */
+// The common rate is the longest part's: a document's rate is its column count over its length, so a very short part's
+// is rounded (a 0.03 s click at 100 per second has 3 columns, 100 +- 17 per second) and is allowed to differ by that much.
+function curveRateOf(ps) {
+  const len = p => (p.doc.curves.lufs || []).length, ref = ps.reduce((a, p) => (len(p) > len(a) ? p : a), ps[0]), rate = ref.doc.curves.rate;
+  if (ps.some(p => Math.abs(p.doc.curves.rate / rate - 1) > 0.05 + 0.5 / Math.max(1, len(p)))) throw new Error("Playhead: analyse every part with the same curveRate");
+  return rate;
+}
 // What the sum of several sounds looks like, from their documents alone: no audio, no new analysis. For folder tracks,
 // layered sound effects and stems. parts: [{ doc, offset, gain }], offset in seconds (where the part starts in the
 // whole, default 0), gain in dB (default 0). Analyse the parts with the same profile, asset class and curveRate.
@@ -3839,7 +3901,7 @@ function align(parts, opts) {
   opts = opts || {};
   const ps = (parts || []).filter(p => p && p.doc && p.doc.curves && p.doc.source);
   if (!ps.length) throw new Error("Playhead.align: no parts (expected [{ doc, offset, gain }])");
-  const rate = opts.rate || ps[0].doc.curves.rate;
+  const rate = opts.rate || curveRateOf(ps);
   const duration = opts.duration || Math.max(...ps.map(p => (p.offset || 0) + p.doc.source.duration));
   const cols = Math.max(1, Math.round(duration * rate));
   const B = ps.every(p => p.doc.spectrum && p.doc.spectrum.bands === ps[0].doc.spectrum.bands) ? ps[0].doc.spectrum.bands : 0;
@@ -3998,7 +4060,8 @@ function combine(parts, opts) {
 //     rise      seconds the loudness takes to climb the last 20 dB into the main peak (short: a hard attack)
 //     contrast  dB the main peak stands above the 60-250 ms before it (silence before an impact makes it bigger)
 //     focus     dB the main peak stands above the 150-400 ms after it (high: short and punchy; low: long and full)
-//     together  0..1, how many of the parts that sound at the main peak start within ±8 ms of each other
+//     together  0..1, how many of the parts in the main hit (as for overlap) start within ±8 ms of each other, each by
+//               its onset nearest the peak (80 ms before it to 100 ms after: a part that comes in late counts against it)
 //     overlap   0..1, how many parts sound in the main hit (from 50 ms before to 100 ms after its peak, with at least
 //               3 % of the whole's energy there): spreading layers apart in time is not layering
 //     coverage  0..1, the share of frequency bands within 30 dB of the strongest one, in the 300 ms from the peak
@@ -4036,8 +4099,7 @@ function partScores(m) {
 function prepareParts(parts) {
   const ps = (parts || []).filter(p => p && p.doc && p.doc.curves && Array.isArray(p.doc.curves.lufs));
   if (!ps.length) throw new Error("Playhead: no parts (expected [{ doc, offset, gain }])");
-  const rate = ps[0].doc.curves.rate;
-  if (ps.some(p => Math.abs(p.doc.curves.rate / rate - 1) > 0.05)) throw new Error("Playhead: analyse every part with the same curveRate");
+  const rate = curveRateOf(ps);
   const B = ps.every(p => p.doc.spectrum && p.doc.spectrum.bands === ps[0].doc.spectrum.bands) ? ps[0].doc.spectrum.bands : 0;
   const sp0 = B ? ps[0].doc.spectrum : null, mel = f => 2595 * Math.log10(1 + f / 700);
   const bandOf = f => (sp0 ? Math.max(0, Math.min(B - 1, Math.floor((mel(f) - mel(sp0.fmin)) / (mel(sp0.fmax) - mel(sp0.fmin)) * (B + 1) - 0.5))) : 0);
@@ -4078,18 +4140,20 @@ function measureAt(P, offs, gains) {
   const focus = Math.min(60, L[cp] - fs / fk);
   let ce = C; for (let c = cp + 1; c < C; c++) if (L[c] < L[cp] - 30) { ce = c; break; }
   const tail = (ce - cp) / rate;
-  // together: the parts that sound at the peak (within 20 dB of the whole), by their onset nearest before it
+  // overlap: the parts with at least 3 % of the whole's energy in the main hit (50 ms before the peak to 100 ms after)
   const t0 = cp / rate, starts = [];
-  for (let k = 0; k < K; k++) {
-    const i = cp - o[k]; if (i < 0 || i >= ps[k].n || ps[k].pow[i] * g[k] < tot[cp] * 0.01) continue;
-    let best = null; for (const t of ps[k].onsets) { const a = t + o[k] / rate; if (a <= t0 + 0.02 && a >= t0 - 0.08) best = best == null || Math.abs(a - t0) < Math.abs(best - t0) ? a : best; }
-    if (best != null) starts.push(best);
-  }
-  // overlap: the parts with at least 3 % of the whole's energy in the main hit
   const wa = Math.max(0, cp - at(0.05)), wb = Math.min(C, cp + at(0.1) + 1);
   let wt = 0; for (let c = wa; c < wb; c++) wt += tot[c];
   let inside = 0;
-  for (let k = 0; k < K; k++) { let e = 0; for (let c = wa; c < wb; c++) { const i = c - o[k]; if (i >= 0 && i < ps[k].n) e += ps[k].pow[i] * g[k]; } if (wt > 0 && e >= 0.03 * wt) inside++; }
+  for (let k = 0; k < K; k++) {
+    let e = 0; for (let c = wa; c < wb; c++) { const i = c - o[k]; if (i >= 0 && i < ps[k].n) e += ps[k].pow[i] * g[k]; }
+    if (!(wt > 0 && e >= 0.03 * wt)) continue;
+    inside++;
+    // together: the same parts, by their onset nearest the peak (from 80 ms before it to 100 ms after, so a part that
+    // comes in late counts against it rather than being left out)
+    let best = null; for (const t of ps[k].onsets) { const a = t + o[k] / rate; if (a <= t0 + 0.1 && a >= t0 - 0.08) best = best == null || Math.abs(a - t0) < Math.abs(best - t0) ? a : best; }
+    if (best != null) starts.push(best);
+  }
   const overlap = inside / K;
   let together = 1;
   if (starts.length > 1) { const s = starts.slice().sort((a, b) => a - b), med = s[Math.floor(s.length / 2)]; together = s.filter(v => Math.abs(v - med) <= 0.008).length / s.length; }
@@ -4208,6 +4272,10 @@ function toMarkers(doc, opts) {
 //                                      ramp (waveLow -> waveHigh), or null for the plain waveform. Over a spectrogram
 //                                      it is drawn as an outline
 //   { type: "spec" }                  a mel spectrogram (40 bands, 40 Hz to 16 kHz), low frequencies at the bottom
+//   { type: "spec", of, cyclic, curve } a view in the spectrogram's place (see views below): of "tempo" ("spec:tempo",
+//                                      "spec:tempo~cyclic"), "lag" ("spec:lag") or "scale" ("scalogram:onsetStrength")
+//   { type: "raster", curve, bars }   the bar raster: a row per bar ("raster:onsetStrength") or per 4 bars ("~4bars"),
+//                                      taking the whole strip; sections and ticks are drawn on it, other layers are not
 //   { type: "line", curve, range }    a curve drawn over the waveform; range [lo, hi] maps to the strip height
 //                                      (default [0, 1]; the 5th-95th percentile for the descriptor curves n1-n8)
 //   { type: "lane", curve, signed }   a curve in its own lane under the waveform. signed: for change curves such as
@@ -4235,6 +4303,7 @@ const DEFAULT_THEME = {
   series: null,                                   // colours of the 2nd and 3rd lane (default below)
   outline: null,                                  // the outline layer (default: wave)
   halo: null,                                     // outline behind letters, for reading them over a spectrogram (none by default)
+  grid: null,                                     // beat grid, section rules and letters on the bar raster (default: white)
   specRamp: [[0, 0, 4], [66, 10, 104], [147, 38, 103], [221, 81, 58], [252, 165, 10], [252, 255, 164]]   // spectrogram, quiet -> loud
 };
 const SERIES = ["#2f9378", "#7e60c4"];
@@ -4262,22 +4331,35 @@ const LOOKS = {
   character: { name: "Sound character", desc: "For sound effects. Curves only, overlaid and mirrored like a waveform: where the hits are (onset strength), harshness and impulsiveness (clicks, cracks, crackle), with onsets marked.", code: "form:overlay,shape:mirror,lane:onsetStrength,lane:harshness,lane:n1Kurtosis,ticks:onsets" },
   surprise: { name: "Hits and surprise", desc: "For sound effects. As Sound character, with spectral surprise (where the sound turns into something new) in place of impulsiveness.", code: "form:overlay,shape:mirror,lane:onsetStrength,lane:harshness,lane:n7Surprisal,ticks:onsets" },
   hits: { name: "Hits and pulse", desc: "The waveform with onset strength (where the hits are) and the local pulse as lanes, beats and bar lines.", code: "wave,lane:onsetStrength,lane:localPulse,ticks:beats+downbeats" },
+  raster: { name: "Bar raster", desc: "For music. A row per bar, top to bottom, like a drum pattern: onset strength through each bar, with sections. Bars that hit the same way line up in columns; fills, breaks and drops show as rows that differ.", code: "raster:onsetStrength,sections" },
+  tempogram: { name: "Tempogram", desc: "For music. How strongly each tempo (40 to 240 BPM, fast at the top) is present over time. A steady beat is a bright line, a tempo change bends it, double and half tempo show as fainter lines. With bar lines.", code: "spec:tempo,ticks:downbeats" },
+  repetition: { name: "Repetition (lag view)", desc: "For music. How alike each moment is to the moment a given time before (that time, the lag, going up). A bright horizontal line means the music repeats what played that long ago. With sections.", code: "spec:lag,sections" },
+  rhythms: { name: "Curve rhythms (scalogram)", desc: "Research view, for any sound. The periodic patterns in onset strength, from fast (top) to slow (bottom): beat, bar and phrase in music, flutter and tremolo in effects. Fainter near the ends, where the sound is too short to be sure of a period.", code: "scalogram:onsetStrength" },
   sculpted: { name: "Waveform as loud as it sounds", desc: "The waveform's envelope follows perceived loudness (a dB-like scale) while its detail stays; colour shows harshness, with the ordinary peak outline for comparison.", code: "sculpt:loudness,wave:harshness,outline,ticks:events+novelty" }
 };
 
 /* ---------------- labels in other languages ---------------- */
 // An app passes its translation table to localize(); keys: lib.curve.<name>, lib.look.<id>.name and .desc,
 // lib.tool.<id>.name, .desc, .param.<param>, .opt.<param>.<value>, lib.legend.<phrase>, lib.mark.<kind>.
-// localize(null) restores English. Analysis documents never change: only labels do.
-let LT = null;
+// localize(null) restores English. Analysis documents never change: only labels do. Counts take the language's plural
+// forms (key.one, .few, .many, .other, as Intl.PluralRules names them); the language comes from localize(table, lang) or
+// from the table's "lib.lang" (the tables in dist/i18n carry it).
+let LT = null, LT_LANG = "en";
 const EN_LABELS = { curves: Object.assign({}, CURVE_LABELS), looks: Object.fromEntries(Object.entries(LOOKS).map(([k, v]) => [k, { name: v.name, desc: v.desc }])) };
 function L(key, en, vars) {
   let s = LT && Object.prototype.hasOwnProperty.call(LT, key) ? LT[key] : en;
   if (vars) s = String(s).replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : m));
   return s;
 }
-function localize(table) {
+function LP(key, n, one, other, vars) {
+  let c = n === 1 ? "one" : "other";
+  if (LT) { try { c = new Intl.PluralRules(LT_LANG).select(n); } catch (e) { /* no Intl: English rule */ } }
+  const k = LT && Object.prototype.hasOwnProperty.call(LT, key + "." + c) ? key + "." + c : key + ".other";
+  return L(k, n === 1 ? one : other, Object.assign({ n }, vars || {}));
+}
+function localize(table, lang) {
   LT = table || null;
+  LT_LANG = lang || (LT && LT["lib.lang"]) || "en";
   for (const k in EN_LABELS.curves) CURVE_LABELS[k] = L("lib.curve." + k, EN_LABELS.curves[k]);
   for (const k in EN_LABELS.looks) { LOOKS[k].name = L("lib.look." + k + ".name", EN_LABELS.looks[k].name); LOOKS[k].desc = L("lib.look." + k + ".desc", EN_LABELS.looks[k].desc); }
   return !!LT;
@@ -4302,7 +4384,10 @@ function parseLook(code) {
   for (const tok of c.split(",").map(t => t.trim()).filter(Boolean)) {
     const [main, ...flags] = tok.split("~"), i = main.indexOf(":"), type = i < 0 ? main : main.slice(0, i), arg = i < 0 ? "" : main.slice(i + 1);
     if (type === "wave") out.push({ type, colour: arg || null });
-    else if (type === "spec" || type === "outline") out.push({ type });
+    else if (type === "outline") out.push({ type });
+    else if (type === "spec") { if (!arg || arg === "mel") out.push({ type }); else if (arg === "tempo") out.push({ type, of: "tempo", cyclic: flags.includes("cyclic") }); else if (arg === "lag") out.push({ type, of: "lag" }); }
+    else if (type === "scalogram") out.push({ type: "spec", of: "scale", curve: arg || "onsetStrength" });
+    else if (type === "raster") out.push({ type, curve: arg || "onsetStrength", bars: flags.includes("4bars") ? 4 : 1 });
     else if (type === "sculpt" && arg) out.push({ type, curve: arg });
     else if (type === "line" && arg) out.push({ type, curve: arg });
     else if (type === "lane" && arg) out.push({ type, curve: arg, signed: flags.includes("signed") });
@@ -4316,6 +4401,8 @@ function parseLook(code) {
 /** Layers -> look code. */
 function lookCode(layers) {
   return (layers || []).map(l => l.type === "wave" ? "wave" + (l.colour ? ":" + l.colour : "") : l.type === "line" ? "line:" + l.curve
+    : l.type === "spec" ? (l.of === "tempo" ? "spec:tempo" + (l.cyclic ? "~cyclic" : "") : l.of === "lag" ? "spec:lag" : l.of === "scale" ? "scalogram:" + l.curve : "spec")
+    : l.type === "raster" ? "raster:" + l.curve + (l.bars === 4 ? "~4bars" : "")
     : l.type === "lane" ? "lane:" + l.curve + (l.signed ? "~signed" : "") : l.type === "ticks" ? (l.of && l.of.length ? "ticks:" + l.of.join("+") : "")
     : l.type === "form" || l.type === "shape" ? l.type + ":" + l.value : l.type === "sculpt" ? "sculpt:" + l.curve : l.type).filter(Boolean).join(",");
 }
@@ -4328,7 +4415,11 @@ function describeLook(layers, doc) {
   const lanes = (layers || []).filter(l => l.type === "lane"), absent = L("lib.legend.absent", " (not in this analysis)");
   for (const l of layers || []) {
     if (l.type === "wave") parts.push(l.colour && has(l.colour) ? L("lib.legend.colour", "colour: {curve}", { curve: lab(l.colour) }) : L("lib.legend.waveform", "waveform"));
-    else if (l.type === "spec") parts.push(!doc || doc.spectrum ? L("lib.legend.spectrogram", "spectrogram (mel, low at the bottom)") : L("lib.legend.spectrogramAbsent", "spectrogram (not in this analysis)"));
+    else if (l.type === "spec" && !l.of) parts.push(!doc || doc.spectrum ? L("lib.legend.spectrogram", "spectrogram (mel, low at the bottom)") : L("lib.legend.spectrogramAbsent", "spectrogram (not in this analysis)"));
+    else if (l.type === "spec" && l.of === "tempo") parts.push((l.cyclic ? L("lib.legend.tempogramCyclic", "tempogram, octaves folded (80 to 160 BPM; a tempo, its half and its double share a row)") : L("lib.legend.tempogram", "tempogram (40 to 240 BPM, fast at the top)")) + (!doc || (doc.rhythm && doc.rhythm.tempogram) ? "" : L("lib.legend.musicAbsent", " (music only; not in this analysis)")));
+    else if (l.type === "spec" && l.of === "lag") parts.push(L("lib.legend.lag", "repetition: bright where the music repeats what played a lag earlier (lag going up)") + (!doc || doc.repetition ? "" : L("lib.legend.musicAbsent", " (music only; not in this analysis)")));
+    else if (l.type === "spec" && l.of === "scale") parts.push(L("lib.legend.scalogram", "rhythms in {curve}: fast at the top, slow at the bottom", { curve: lab(l.curve) }) + (has(l.curve) ? "" : absent));
+    else if (l.type === "raster") parts.push((l.bars === 4 ? L("lib.legend.raster4", "phrase raster: {curve}, a row per 4 bars, top to bottom", { curve: lab(l.curve) }) : L("lib.legend.raster", "bar raster: {curve}, a row per bar, top to bottom", { curve: lab(l.curve) })) + (!doc || barRows(doc, 1) ? (has(l.curve) ? "" : absent) : L("lib.legend.needsBeat", " (needs a beat: music only)")));
     else if (l.type === "outline") parts.push(L("lib.legend.outline", "outline: peak waveform"));
     else if (l.type === "sculpt") parts.push(L("lib.legend.height", "height: {curve}", { curve: lab(l.curve) }) + (!(layers || []).some(x => x.type === "wave") ? L("lib.legend.heightNoWave", " (shapes the waveform; add it to see)") : has(l.curve) ? "" : absent));
     else if (l.type === "line" && has(l.curve)) parts.push(L("lib.legend.line", "line: {curve}", { curve: lab(l.curve) }));
@@ -4364,7 +4455,11 @@ function lookFits(doc, look) {
   for (const l of layers) {
     if ((l.type === "lane" || l.type === "line" || l.type === "sculpt") && !live(l.curve)) return false;
     if (l.type === "wave" && l.colour && !live(l.colour)) return false;
-    if (l.type === "spec" && !doc.spectrum) return false;
+    if (l.type === "spec" && !l.of && !doc.spectrum) return false;
+    if (l.type === "spec" && l.of === "tempo" && !(doc.rhythm && doc.rhythm.tempogram)) return false;
+    if (l.type === "spec" && l.of === "lag" && !doc.repetition) return false;
+    if (l.type === "spec" && l.of === "scale" && (!live(l.curve) || curves[l.curve].length < 40)) return false;
+    if (l.type === "raster" && (!live(l.curve) || !barRows(doc, 1))) return false;
   }
   return true;
 }
@@ -4377,6 +4472,256 @@ function specBytes(sp) {
   return u8;
 }
 const rampAt = (ramp, u) => { const x = Math.max(0, Math.min(1, u)) * (ramp.length - 1), i = Math.min(ramp.length - 2, Math.floor(x)), f = x - i; return ramp[i].map((v, k) => Math.round(v + (ramp[i + 1][k] - v) * f)); };
+// value of a curve over [ta, tb): the mean of its samples there, or linear interpolation when a sample spans more
+function curveValue(arr, rate, ta, tb) {
+  if (!arr || !arr.length) return null;
+  const ia = ta * rate, ib = tb * rate, n = arr.length;
+  if (ib - ia >= 1) { let s = 0, k = 0; for (let i = Math.max(0, Math.floor(ia)); i < Math.min(n, Math.ceil(ib)); i++) if (arr[i] != null) { s += arr[i]; k++; } return k ? s / k : null; }
+  const x = Math.max(0, Math.min(n - 1, (ia + ib) / 2 - 0.5)), i = Math.floor(x), f = x - i, a = arr[i], b = arr[Math.min(n - 1, i + 1)];
+  return a == null ? (f > 0.5 ? b : null) : b == null ? (f < 0.5 ? a : null) : a + (b - a) * f;
+}
+
+/* ---------------- views: images of rhythm and form ---------------- */
+// Four views stand in for the waveform where rhythm and form matter more than amplitude:
+//   bar raster  one row per bar (or per 4 bars), top to bottom; left to right is the position in the bar; colour is a
+//               curve (onset strength by default). Bars that hit the same way line up; fills, breaks and drops stand out.
+//               Needs a beat (music profile)
+//   tempogram   how strongly each tempo is present over time, 40 to 240 BPM on a log scale, fast at the top. A steady
+//               beat is a bright line, a tempo change bends it, double and half tempo are fainter lines. "cyclic" folds
+//               the octaves onto one (80 to 160 BPM, so the common dance tempi sit mid-strip rather than on its edge), so a
+//               tempo and its half and double share a row (music profile)
+//   lag view    how alike each moment is to the moment a lag earlier, the lag going up. A bright horizontal line is a
+//               repeat: what plays now was heard that long before (music profile)
+//   scalogram   the periodic patterns in any curve (Morlet wavelet, Torrence & Compo 1998, power divided by scale as
+//               Liu et al. 2007 so equal swings read equally at every period), fast at the top and slow at the bottom:
+//               beat, bar and phrase pulsing in music, flutter and tremolo in effects. Fainter near the ends, where a
+//               period is longer than the sound around it (outside the cone of influence)
+// Playhead.view(doc, kind, opts) gives the image as numbers, for hosts that draw it themselves or measure it:
+//   { kind, rows, cols, values (Float32Array, row-major, row 0 at the top, 0..1, -1 where there is no data),
+//     yTicks: [{ row, text }], and colAt(t) (time-based views) or rows of [start, end] seconds (the raster) }
+const VIEW_KINDS = ["raster", "tempo", "lag", "scale"];
+const viewCache = typeof WeakMap !== "undefined" ? new WeakMap() : null;
+function cachedView(doc, key, make) {
+  if (!viewCache) return make();
+  let m = viewCache.get(doc); if (!m) viewCache.set(doc, m = new Map());
+  if (!m.has(key)) m.set(key, make());
+  return m.get(key);
+}
+// bar boundaries from the downbeats (or every 4th beat), gaps where the beat dropped out filled and both ends extended
+// with the median bar, so every moment of the sound is in a row; per 4 bars, a row starts on the first real downbeat
+function barRows(doc, per) {
+  const r = doc.rhythm, dur = doc.source && doc.source.duration;
+  if (!r || !dur) return null;
+  const d = r.downbeats && r.downbeats.length >= 2 ? r.downbeats : r.beats && r.beats.length >= 8 ? r.beats.filter((_, i) => i % 4 === 0) : null;
+  if (!d || d.length < 2) return null;
+  const gaps = d.slice(1).map((t, i) => t - d[i]).sort((a, b) => a - b), bar = gaps[gaps.length >> 1];
+  if (!(bar > 0.2)) return null;
+  const b = [];
+  for (let t = d[0] - bar; t + bar > 0.05; t -= bar) b.unshift(t);
+  const first = b.length;
+  for (let i = 0; i < d.length; i++) {
+    b.push(d[i]);
+    const next = d[i + 1];
+    if (next != null && next - d[i] > 1.5 * bar) { const n = Math.round((next - d[i]) / bar); for (let k = 1; k < n; k++) b.push(d[i] + k * (next - d[i]) / n); }
+  }
+  for (let t = b[b.length - 1] + bar; t < dur - 0.05; t += bar) b.push(t);
+  b.push(b[b.length - 1] + bar);
+  const rows = [];
+  // per 4 bars: rows of 4 boundaries each, the partial phrases at both ends extended with the median bar
+  const at = i => i < 0 ? b[0] + i * bar : i > b.length - 1 ? b[b.length - 1] + (i - b.length + 1) * bar : b[i];
+  if (per === 4) { for (let i = first % 4 ? first % 4 - 4 : 0; i < b.length - 1; i += 4) rows.push([at(i), at(i + 4)]); }
+  else for (let i = 0; i < b.length - 1; i++) rows.push([b[i], b[i + 1]]);
+  // beats per bar: the most common count of beats between downbeats (4 when it cannot be told)
+  const counts = {};
+  for (let i = 0; i + 1 < d.length; i++) { const n = (r.beats || []).filter(t => t >= d[i] - 0.02 && t < d[i + 1] - 0.02).length; if (n >= 2 && n <= 7) counts[n] = (counts[n] || 0) + 1; }
+  const bpb = +(Object.entries(counts).sort((x, y) => y[1] - x[1])[0] || [4])[0];
+  return { rows, bar, beatsPerBar: bpb, bars: per === 4 ? 4 : 1 };
+}
+function rasterView(doc, curve, per, cols) {
+  const br = barRows(doc, per), arr = doc.curves && doc.curves[curve];
+  if (!br || !Array.isArray(arr)) return null;
+  const R = br.rows.length, rate = doc.curves.rate, dur = doc.source.duration, values = new Float32Array(R * cols), lr = autoRange(curve, arr);
+  for (let r = 0; r < R; r++) {
+    const [a, e] = br.rows[r], w = (e - a) / cols;
+    for (let c = 0; c < cols; c++) {
+      const ta = a + c * w, tb = ta + w;
+      const v = tb <= 0 || ta >= dur ? null : curveValue(arr, rate, Math.max(0, ta), Math.min(dur, tb));
+      values[r * cols + c] = v == null ? -1 : Math.max(0, Math.min(1, (v - lr[0]) / (lr[1] - lr[0])));
+    }
+  }
+  const yTicks = [];
+  for (let r = 0; r < R; r++) if (r % (per === 4 ? 2 : 8) === 0) yTicks.push({ row: r + 0.5, text: String(r * br.bars + 1) });
+  return { kind: "raster", curve, rows: R, cols, values, yTicks, timeRows: br.rows, beatsPerBar: br.beatsPerBar, bars: br.bars };
+}
+function tempoView(doc, cyclic) {
+  const tg = doc.rhythm && doc.rhythm.tempogram, u8 = tg && specBytes(tg);
+  if (!u8) return null;
+  const B = tg.bins, C = tg.columns, P = tg.perOctave, FOLD = 80, kf = Math.round(P * Math.log2(FOLD / tg.bpmMin));
+  const rows = cyclic ? P : B, values = new Float32Array(rows * C);
+  if (!cyclic) { for (let c = 0; c < C; c++) for (let k = 0; k < B; k++) values[(B - 1 - k) * C + c] = u8[c * B + k] / 255; }
+  else {
+    // every tempo folded onto 80 to 160 BPM: the mean over the octaves that land on a row, scaled to the image's peak
+    const n = new Float32Array(P); for (let k = 0; k < B; k++) n[((k - kf) % P + P) % P]++;
+    let pk = 1e-9;
+    for (let c = 0; c < C; c++) for (let k = 0; k < B; k++) { const j = ((k - kf) % P + P) % P, o = (P - 1 - j) * C + c; values[o] += u8[c * B + k] / 255 / n[j]; }
+    for (const v of values) if (v > pk) pk = v;
+    for (let i = 0; i < values.length; i++) values[i] /= pk;
+  }
+  const rowOf = bpm => cyclic ? P - 1 - P * Math.log2(bpm / FOLD) : B - 1 - P * Math.log2(bpm / tg.bpmMin);
+  const yTicks = (cyclic ? [90, 120, 140] : [60, 90, 120, 180]).map(bpm => ({ row: rowOf(bpm) + 0.5, text: String(bpm) })).filter(t => t.row > 0.5 && t.row < rows - 0.5);
+  return { kind: "tempo", cyclic: !!cyclic, rows, cols: C, values, yTicks, colAt: t => Math.max(0, Math.min(C - 1, Math.round((t - tg.start) / tg.hop))) };
+}
+function lagView(doc) {
+  const rp = doc.repetition, u8 = rp && specBytes(rp);
+  if (!u8) return null;
+  const R = rp.lags, C = rp.columns, values = new Float32Array(R * C);
+  // similarity is a Gaussian of the distance between moments, about 0.37 at the median distance: the median of the
+  // image is set to black, so that ordinary likeness recedes and repeats (near 1) stand out
+  const valid = []; for (const v of u8) if (v) valid.push(v);
+  valid.sort((a, b) => a - b);
+  const lo = valid.length ? (valid[valid.length >> 1] - 1) / 254 : 0;
+  for (let c = 0; c < C; c++) for (let l = 0; l < R; l++) { const v = u8[c * R + l]; values[(R - 1 - l) * C + c] = v ? Math.max(0, ((v - 1) / 254 - lo) / Math.max(1e-6, 1 - lo)) : -1; }
+  const lagS = l => (l + 1) * rp.lagStep * rp.unitSeconds, beats = rp.unit === "beat", yTicks = [];
+  if (beats) { for (const bars of [4, 8, 16, 32, 64]) { const l = bars * 4 / rp.lagStep - 1; if (l >= 0 && l < R - 1) yTicks.push({ row: R - 1 - l + 0.5, text: LP("lib.unit.bars", bars, "{n} bar", "{n} bars") }); } }
+  else for (const s of [5, 10, 30, 60, 120]) { const l = s / (rp.lagStep * rp.unitSeconds) - 1; if (l >= 0 && l < R - 1) yTicks.push({ row: R - 1 - l + 0.5, text: s >= 60 ? s / 60 + " min" : s + " s" }); }
+  const times = rp.times;
+  const colAt = t => { let lo2 = 0, hi = C - 1; while (lo2 < hi) { const m = (lo2 + hi + 1) >> 1; if (times[m] <= t) lo2 = m; else hi = m - 1; } return lo2; };
+  return { kind: "lag", rows: R, cols: C, values, yTicks, colAt, lagSeconds: lagS };
+}
+// radix-2 FFT in place (inverse scaled by 1/n)
+function fft(re, im, inv) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) { let bit = n >> 1; for (; j & bit; bit >>= 1) j ^= bit; j ^= bit; if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; } }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = (inv ? 2 : -2) * Math.PI / len, wr = Math.cos(ang), wi = Math.sin(ang), h = len >> 1;
+    for (let i = 0; i < n; i += len) {
+      let cr = 1, ci = 0;
+      for (let k = 0; k < h; k++) {
+        const a = i + k, b = a + h, tr = re[b] * cr - im[b] * ci, ti = re[b] * ci + im[b] * cr;
+        re[b] = re[a] - tr; im[b] = im[a] - ti; re[a] += tr; im[a] += ti;
+        const nr = cr * wr - ci * wi; ci = cr * wi + ci * wr; cr = nr;
+      }
+    }
+  }
+  if (inv) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+}
+const MORLET_W0 = 6, MORLET_FOURIER = 4 * Math.PI / (MORLET_W0 + Math.sqrt(2 + MORLET_W0 * MORLET_W0));   // period / scale
+function scaleView(doc, curve) {
+  const arr = doc.curves && doc.curves[curve];
+  if (!Array.isArray(arr)) return null;
+  // periods from 4 curve samples to a fifth of the sound (longer ones would be outside the cone of influence nearly everywhere)
+  const rate = doc.curves.rate, n = arr.length, dt = 1 / rate, pMin = 4 / rate, pMax = Math.min(n / rate / 5, 600);
+  if (!(pMax >= 2 * pMin)) return null;
+  const perOct = 8, rows = Math.min(80, Math.floor(perOct * Math.log2(pMax / pMin)) + 1), periods = [];
+  for (let j = 0; j < rows; j++) periods.push(pMin * Math.pow(2, j / perOct));
+  let mean = 0, k = 0; for (const v of arr) if (v != null) { mean += v; k++; } mean = k ? mean / k : 0;
+  let N = 1; while (N < 2 * n) N <<= 1;
+  const xr = new Float64Array(N), xi = new Float64Array(N);
+  for (let i = 0; i < n; i++) xr[i] = (arr[i] == null ? mean : arr[i]) - mean;
+  fft(xr, xi, false);
+  const power = new Float32Array(rows * n), wr = new Float64Array(N), wi = new Float64Array(N), norm0 = Math.pow(Math.PI, -0.25);
+  for (let j = 0; j < rows; j++) {
+    const s = periods[j] / MORLET_FOURIER, g = norm0 * Math.sqrt(2 * Math.PI * s / dt);
+    wr.fill(0); wi.fill(0);
+    for (let q = 1; q <= N >> 1; q++) { const w = 2 * Math.PI * q / (N * dt), h = g * Math.exp(-0.5 * (s * w - MORLET_W0) ** 2); wr[q] = xr[q] * h; wi[q] = xi[q] * h; }
+    fft(wr, wi, true);
+    // power divided by scale; rows go from the shortest period (top) down
+    for (let i = 0; i < n; i++) power[j * n + i] = (wr[i] * wr[i] + wi[i] * wi[i]) / s;
+  }
+  // inside the cone of influence: the period's e-folding time (sqrt 2 times the scale) fits between the moment and the end
+  const inside = (j, i) => Math.SQRT2 * periods[j] / MORLET_FOURIER <= Math.min(i, n - 1 - i) / rate;
+  let pk = 1e-20; for (let j = 0; j < rows; j++) for (let i = 0; i < n; i++) if (inside(j, i) && power[j * n + i] > pk) pk = power[j * n + i];
+  if (pk <= 1e-20) for (const v of power) if (v > pk) pk = v;
+  const values = new Float32Array(rows * n), faint = new Uint8Array(rows * n);
+  for (let j = 0; j < rows; j++) for (let i = 0; i < n; i++) {
+    const p = power[j * n + i];
+    values[j * n + i] = p > 0 ? Math.max(0, Math.min(1, 1 + 10 * Math.log10(p / pk) / 30)) : 0;     // 30 dB below the peak is black
+    faint[j * n + i] = inside(j, i) ? 0 : 1;
+  }
+  const r = doc.rhythm, beat = r && r.reliable && r.tempo ? 60 / r.tempo : 0, yTicks = [];
+  const marks = beat ? [[beat, L("lib.unit.beat", "beat")], [4 * beat, L("lib.unit.bar", "bar")], [16 * beat, LP("lib.unit.bars", 4, "{n} bar", "{n} bars")], [64 * beat, LP("lib.unit.bars", 16, "{n} bar", "{n} bars")]]
+    : [[0.05, "50 ms"], [0.2, "0.2 s"], [1, "1 s"], [5, "5 s"], [20, "20 s"], [60, "1 min"]];
+  for (const [p, text] of marks) { const row = perOct * Math.log2(p / pMin); if (row >= 0 && row <= rows - 1) yTicks.push({ row: row + 0.5, text }); }
+  return { kind: "scale", curve, rows, cols: n, values, faint, yTicks, periods, colAt: t => Math.max(0, Math.min(n - 1, Math.floor(t * rate))) };
+}
+/** The image of a view as numbers (see above); null when the document cannot give it. kind: "raster" (opts.curve,
+ *  opts.bars 1 or 4, opts.cols), "tempo" (opts.cyclic), "lag", "scale" (opts.curve). Built once per document and options. */
+function view(doc, kind, opts) {
+  opts = opts || {};
+  if (!doc || !VIEW_KINDS.includes(kind)) return null;
+  const curve = opts.curve || "onsetStrength", bars = opts.bars === 4 ? 4 : 1, cols = Math.max(8, Math.min(512, opts.cols || (bars === 4 ? 192 : 96)));
+  const key = kind + "|" + (kind === "raster" ? curve + "|" + bars + "|" + cols : kind === "scale" ? curve : kind === "tempo" ? !!opts.cyclic : "");
+  return cachedView(doc, key, () => kind === "raster" ? rasterView(doc, curve, bars, cols) : kind === "tempo" ? tempoView(doc, opts.cyclic) : kind === "lag" ? lagView(doc) : scaleView(doc, curve));
+}
+const makeCanvas = (w, h) => typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : typeof document !== "undefined" && document.createElement ? Object.assign(document.createElement("canvas"), { width: w, height: h }) : null;
+// an image of rows x cols cells, cell(r, c) -> [r, g, b, a] or null (left clear), drawn into the box dx, dy, dw, dh
+function paintCells(ctx, rows, cols, cell, dx, dy, dw, dh, smooth) {
+  const img = ctx.drawImage && makeCanvas(cols, rows), ig = img && img.getContext("2d");
+  if (ig && ig.createImageData) {
+    const id = ig.createImageData(cols, rows);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) { const px = cell(r, c); if (!px) continue; const o = (r * cols + c) * 4; id.data[o] = px[0]; id.data[o + 1] = px[1]; id.data[o + 2] = px[2]; id.data[o + 3] = px[3]; }
+    ig.putImageData(id, 0, 0);
+    const sm = ctx.imageSmoothingEnabled; ctx.imageSmoothingEnabled = !!smooth;
+    ctx.drawImage(img, 0, 0, cols, rows, dx, dy, dw, dh);
+    ctx.imageSmoothingEnabled = sm;
+    return;
+  }
+  const cw = dw / cols, ch = dh / rows;     // no canvas to build an image on (tests, some workers): one rectangle per cell
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) { const px = cell(r, c); if (!px) continue; ctx.fillStyle = "rgba(" + px[0] + "," + px[1] + "," + px[2] + "," + (px[3] / 255).toFixed(2) + ")"; ctx.fillRect(dx + c * cw, dy + r * ch, cw + 0.5, ch + 0.5); }
+}
+// a view's axis (tempo, lag, period, bar number) along the right edge, as the spectrogram's frequencies
+function axisLabels(ctx, v, h, W, th) {
+  if (h < 48 || W < 200 || !v.yTicks) return;
+  ctx.fillStyle = th.text; ctx.globalAlpha = 0.65; ctx.font = "9px sans-serif"; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+  let last = -1e9;
+  for (const t of v.yTicks) { const y = t.row / v.rows * h; if (y > 6 && y < h - 6 && Math.abs(y - last) >= 11) { ctx.fillText(t.text, W - 3, y); last = y; } }
+  ctx.globalAlpha = 1; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+}
+// The bar raster takes the whole strip: rows of bars, a faint beat grid, sections as rules between rows with their
+// letters, and onsets, events and novelty as dots where they fall in the bar. Other layers have no place on it.
+function drawRaster(ctx, doc, layers, rl, W, H, t0, t1, th, items) {
+  const out = { code: lookCode(layers), layers, legend: describeLook(layers, doc), items, raster: null };
+  const v = view(doc, "raster", { curve: rl.curve, bars: rl.bars });
+  if (!v) return out;
+  let r0 = 0, r1 = v.rows - 1;                  // the rows that overlap the shown time (all of them unless zoomed)
+  while (r0 < r1 && v.timeRows[r0][1] <= t0) r0++;
+  while (r1 > r0 && v.timeRows[r1][0] >= t1) r1--;
+  const nr = r1 - r0 + 1, rowH = H / nr, ramp = th.specRamp, grid = th.grid || "#ffffff";
+  paintCells(ctx, nr, v.cols, (r, c) => { const u = v.values[(r0 + r) * v.cols + c]; return u < 0 ? null : rampAt(ramp, u).concat(255); }, 0, 0, W, H, nr > H);
+  items.push({ label: CURVE_LABELS[rl.curve] || rl.curve, ramp });
+  const per = v.bars * v.beatsPerBar;
+  ctx.strokeStyle = grid; ctx.lineWidth = 1;
+  for (let k = 1; k < per; k++) { const x = Math.round(k / per * W) + 0.5; ctx.globalAlpha = k % v.beatsPerBar === 0 ? 0.5 : 0.18; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  ctx.globalAlpha = 1;
+  const tA = v.timeRows[r0][0], tB = v.timeRows[r1][1];
+  const place = t => { let r = r0; while (r < r1 && t >= v.timeRows[r][1]) r++; const [a, e] = v.timeRows[r]; return { x: (t - a) / (e - a) * W, y: (r - r0) * rowH, r }; };
+  const want = k => layers.some(l => l.type === "ticks" && l.of.includes(k));
+  const dots = (ts, rad, colour) => {
+    ctx.fillStyle = colour;
+    for (const t of ts) { if (t < tA || t >= tB) continue; const p = place(t); ctx.beginPath(); if (ctx.arc) ctx.arc(p.x, p.y + rowH / 2, rad, 0, 2 * Math.PI); else ctx.rect(p.x - rad, p.y + rowH / 2 - rad, 2 * rad, 2 * rad); ctx.fill(); }
+  };
+  const rad = Math.max(1, Math.min(3, rowH / 3));
+  if (want("onsets") && doc.onsets) dots(doc.onsets, rad, th.line);
+  if (want("events") && doc.events) dots(doc.events.map(e => e.start), rad * 1.3, th.line);
+  if (want("novelty") && doc.noveltyTicks) dots(doc.noveltyTicks, rad * 1.3, grid);
+  if (layers.some(l => l.type === "sections") && doc.sections) {
+    const fs = Math.max(9, Math.min(12, Math.round(H / 10)));
+    ctx.font = fs + "px sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    let lastY = -1e9;
+    for (const s of doc.sections) {
+      if (s.start >= tB || s.end <= tA) continue;
+      const p = place(Math.max(s.start, tA)), y = Math.round((p.x > W / 2 ? p.r - r0 + 1 : p.r - r0) * rowH) + 0.5;     // the nearest row edge
+      if (s.start > Math.max(0.05, tA) && y > 1) { ctx.strokeStyle = grid; ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); ctx.globalAlpha = 1; }
+      if (y - lastY < fs + 1 || y > H - fs) continue;
+      if (th.halo && ctx.strokeText) { ctx.strokeStyle = th.halo; ctx.lineWidth = 3; ctx.strokeText(s.label, 3, y + 2); ctx.lineWidth = 1; }
+      ctx.fillStyle = grid; ctx.fillText(s.label, 3, y + 2); lastY = y;
+    }
+    ctx.textBaseline = "alphabetic";
+  }
+  axisLabels(ctx, { rows: nr, yTicks: v.yTicks.filter(t => t.row >= r0 && t.row < r1 + 1).map(t => ({ row: t.row - r0, text: t.text })) }, H, W, th);
+  out.raster = { rows: v.timeRows.slice(r0, r1 + 1) };
+  return out;
+}
 
 // Draws a strip into any Canvas 2D context (page canvas, OffscreenCanvas in a worker).
 // opts: width, height (default: the context's canvas), from, to (seconds, for zoom), theme, and one of
@@ -4391,29 +4736,30 @@ function drawStrip(ctx, doc, opts) {
   th.lane = th.lane || th.line; th.laneDown = th.laneDown || th.rule; th.laneFlat = th.laneFlat || th.wave;
   const series = [th.lane].concat(th.series || SERIES);
   th.outline = th.outline || th.wave;
-  const layers = opts.layers ? parseLook(opts.layers) : opts.look ? (parseLook(opts.look) || legacyLayers(doc, opts)) : legacyLayers(doc, opts);
+  const asked = opts.layers ? parseLook(opts.layers) : opts.look ? (parseLook(opts.look) || legacyLayers(doc, opts)) : legacyLayers(doc, opts);
+  // a view this document cannot give (a beat view of a sound effect) leaves the plain waveform in its place; the legend
+  // says the view is not in this analysis
+  const missing = l => (l.type === "raster" || (l.type === "spec" && l.of)) && !view(doc, l.type === "raster" ? "raster" : l.of, l);
+  const layers = asked.some(missing) ? asked.flatMap((l, i) => !missing(l) ? [l] : asked.some(x => x.type === "wave") || asked.findIndex(missing) < i ? [] : [{ type: "wave", colour: null }]) : asked;
   const W = opts.width || (ctx.canvas && ctx.canvas.width) || 600, H = opts.height || (ctx.canvas && ctx.canvas.height) || 64;
   const dur = doc.source.duration, t0 = Math.max(0, opts.from || 0), t1 = Math.min(dur, opts.to || dur), span = Math.max(1e-6, t1 - t0);
   const curves = doc.curves, rate = curves.rate, xOf = t => (t - t0) / span * W;
   const form = optionOf(layers, "form", "lanes"), shape = optionOf(layers, "shape", "base");
-  const hasMain = layers.some(l => l.type === "wave" || (l.type === "spec" && doc.spectrum));
+  // what a spectrogram-like layer shows: the mel spectrogram, or a view (tempogram, lag view, scalogram) of this document
+  const specOf = l => !l.of ? doc.spectrum || null : view(doc, l.of, l);
+  const items = [];
+  const rasterL = layers.find(l => l.type === "raster");
+  if (rasterL) return drawRaster(ctx, doc, asked, rasterL, W, H, t0, t1, th, items);
+  const hasMain = layers.some(l => l.type === "wave" || (l.type === "spec" && specOf(l)));
   // lanes take the bottom of the strip (or all of it without a waveform); overlaid curves share the main band
   const lanes = layers.filter(l => l.type === "lane" && Array.isArray(curves[l.curve]));
   const stacked = form === "lanes" && lanes.length > 0;
   const laneH = !stacked ? 0 : hasMain ? Math.max(6, Math.round(H * (lanes.length === 1 ? 0.28 : lanes.length === 2 ? 0.22 : 0.18))) : H / lanes.length;
   const mainH = hasMain ? Math.max(4, H - laneH * (stacked ? lanes.length : 0)) : (stacked ? 0 : H);
-  const items = [];
   if (th.background) { ctx.fillStyle = th.background; ctx.fillRect(0, 0, W, H); }
-  // value of a curve over [ta, tb): the mean of its samples there, or linear interpolation when a sample spans several pixels
-  const valAt = (arr, ta, tb) => {
-    if (!arr || !arr.length) return null;
-    const ia = ta * rate, ib = tb * rate, n = arr.length;
-    if (ib - ia >= 1) { let s = 0, k = 0; for (let i = Math.max(0, Math.floor(ia)); i < Math.min(n, Math.ceil(ib)); i++) if (arr[i] != null) { s += arr[i]; k++; } return k ? s / k : null; }
-    const x = Math.max(0, Math.min(n - 1, (ia + ib) / 2 - 0.5)), i = Math.floor(x), f = x - i, a = arr[i], b = arr[Math.min(n - 1, i + 1)];
-    return a == null ? (f > 0.5 ? b : null) : b == null ? (f < 0.5 ? a : null) : a + (b - a) * f;
-  };
+  const valAt = (arr, ta, tb) => curveValue(arr, rate, ta, tb);
   const mix = (a, b, u) => "rgb(" + a.map((v, i) => Math.round(v + (b[i] - v) * u)).join(",") + ")";
-  const specBefore = l => { const i = layers.indexOf(l); return doc.spectrum && layers.some((x, j) => x.type === "spec" && j < i); };
+  const specBefore = l => { const i = layers.indexOf(l); return layers.some((x, j) => x.type === "spec" && j < i && specOf(x)); };
   const sculptL = layers.find(l => l.type === "sculpt" && Array.isArray(curves[l.curve])), sculpt = sculptL ? curves[sculptL.curve] : null;
   // the waveform per pixel column as [top, bottom] (fractions of the half-height, + up); with a sculpt curve the
   // envelope (a running maximum over about 1% of the width) is replaced by the curve and the detail inside it is kept
@@ -4478,12 +4824,26 @@ function drawStrip(ctx, doc, opts) {
       ctx.globalAlpha = 1;
       items.push({ label: "peak waveform", colour: th.outline });
     },
-    spec() {
+    spec(l) {
+      if (l.of) {     // a view: one image column per pixel, each taking the view's column at that moment
+        const v = specOf(l);
+        if (!v || !mainH) return;
+        const PW = Math.max(1, Math.ceil(W)), at = new Int32Array(PW);      // hosts may pass a fractional width
+        for (let x = 0; x < PW; x++) { const t = t0 + (x + 0.5) / PW * span; at[x] = t > dur ? -1 : v.colAt(t); }
+        const ramp = th.specRamp;
+        paintCells(ctx, v.rows, PW, (r, x) => {
+          if (at[x] < 0) return null;
+          const k = r * v.cols + at[x], u = v.values[k];
+          return !(u >= 0) ? null : rampAt(ramp, u).concat(v.faint && v.faint[k] ? 110 : 255);
+        }, 0, 0, W, mainH, true);
+        axisLabels(ctx, v, mainH, W, th, "right");
+        items.push({ label: l.of === "tempo" ? L("lib.item.tempo", "tempo strength") : l.of === "lag" ? L("lib.item.repeat", "likeness to earlier") : L("lib.item.rhythms", "rhythms in {curve}", { curve: CURVE_LABELS[l.curve] || l.curve }), ramp });
+        return;
+      }
       const sp = doc.spectrum, u8 = specBytes(sp);
       if (!u8 || !mainH) return;
       const B = sp.bands, C = sp.columns, ramp = th.specRamp, c0 = Math.max(0, Math.floor(t0 / dur * C)), c1 = Math.min(C, Math.ceil(t1 / dur * C)), nc = Math.max(1, c1 - c0);
-      const make = (w, h) => typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(w, h) : typeof document !== "undefined" && document.createElement ? Object.assign(document.createElement("canvas"), { width: w, height: h }) : null;
-      const img = ctx.drawImage && make(nc, B), ig = img && img.getContext("2d");
+      const img = ctx.drawImage && makeCanvas(nc, B), ig = img && img.getContext("2d");
       const sx = (c0 - t0 / dur * C) / (t1 - t0) * dur / C * W, cw = W / ((t1 - t0) / dur * C);     // where column c0 starts, and a column's width
       if (ig && ig.createImageData) {
         const id = ig.createImageData(nc, B);
@@ -4605,10 +4965,10 @@ function drawStrip(ctx, doc, opts) {
     }
   };
   for (const l of layers) if (draw[l.type]) draw[l.type](l);
-  return { code: lookCode(layers), layers, legend: describeLook(layers, doc), items };
+  return { code: lookCode(asked), layers: asked, legend: describeLook(asked, doc), items };
 }
 
-const api = { version: VERSION, schema: SCHEMA, schemaVersion: SCHEMA_VERSION, profiles: PROFILES, analyze, fromAnalysis, process, tools, toMarkers, curveAt, align, combine, combineRules: COMBINE_RULES, measureParts, arrange, goals: GOALS, drawStrip, parseLook, lookCode, describeLook, lookFits, looks: LOOKS, curveLabels: CURVE_LABELS, localize, forms: FORMS, shapes: SHAPES, theme: DEFAULT_THEME, internals: { WL, PHD, get FX() { return FXroot(); } } };
+const api = { version: VERSION, schema: SCHEMA, schemaVersion: SCHEMA_VERSION, profiles: PROFILES, analyze, fromAnalysis, process, tools, toMarkers, curveAt, align, combine, combineRules: COMBINE_RULES, measureParts, arrange, goals: GOALS, drawStrip, view, viewKinds: VIEW_KINDS, parseLook, lookCode, describeLook, lookFits, looks: LOOKS, curveLabels: CURVE_LABELS, localize, forms: FORMS, shapes: SHAPES, theme: DEFAULT_THEME, internals: { WL, PHD, get FX() { return FXroot(); } } };
 if (typeof module !== "undefined" && module.exports) module.exports = api;
 root.Playhead = api;
 })(__ph);

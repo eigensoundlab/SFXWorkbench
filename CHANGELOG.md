@@ -25,6 +25,11 @@ All notable changes to this project are listed here. The format follows
 ### Changed
 - `processChain(snd, chain, ctx)` passes what is known about the source (`ctx.onsets`) to each effect while the timing is
   still the source's. `layerOnsets` moved from `layering.js` to `stretch.js` (same export).
+- Playhead core updated (still 0.2.0 plus unreleased changes; see `src/vendor/README.md`). A layer that starts with
+  sound used to be predicted up to 2 dB too loud and 20 to 60 ms early at its peak, which skewed Find arrangements;
+  Playhead now analyses a file as heard in silence, and its check on 175 mixed arrangements finds the peak level within
+  0.2 LU and the search's ranking matching the mixes' (median Spearman 0.92 to 0.95). The Playhead view gains "Curve
+  rhythms (scalogram)": the periodic patterns in a sound's onset strength (flutter, tremolo, engine and rotor rates).
 
 ## [0.10.0] - 2026-11-07
 

@@ -11,11 +11,14 @@ analysis-driven tools and the public API (`analyze`, `drawStrip`, `curveAt`, `to
 `measureParts`, `arrange`). Apache-2.0,
 Copyright 2026 Daniel Sandner. Concept DOI [10.5281/zenodo.23932625](https://doi.org/10.5281/zenodo.23932625).
 
-- Playhead 0.2.0 with the unreleased changes up to "Search arrangements of parts from their documents" (`npm run
+- Playhead 0.2.0 with the unreleased changes up to "Check searched arrangements against their real mixes" (`npm run
   build:dist` in the Playhead repository at that commit, file `dist/playhead-core.mjs`): combining documents (`combine`,
-  `align`) and searching arrangements (`measureParts`, `arrange`). It still reports `version` 0.2.0; the app checks for
-  the functions, not the version (`PH_PARTS`). Replace it with the build of Playhead 0.3.0 once that is released.
-- SHA-256: `19fec5809555be420ec88da1321adc803d4014462721d8a16f320311aea6412c`
+  `align`), searching arrangements (`measureParts`, `arrange`), the views of rhythm and form (bar raster, tempogram,
+  lag view, curve scalogram; for sound effects the scalogram is the one that fits) and the loudness fix that makes a
+  clip's document its share of any mix (arrangements of layers that start with sound are now predicted to within
+  0.2 LU at the peak). It still reports `version` 0.2.0; the app checks for the functions, not the version
+  (`PH_PARTS`). Replace it with the build of Playhead 0.3.0 once that is released.
+- SHA-256: `612e156097ab5e70c141403493971a1aad7328b3c6baabd75edd16f26cb64b0c`
 - Used by `src/app/playhead.js` only: `analyze()` with the `sfx` profile (`fast` above 30 s; layers of the layer stack
   as sound effects at 100 curve columns per second), `drawStrip()` with a look, `looks`, `parseLook()`, `lookCode()`,
   `lookFits()`, `tools()`, `process()` (de-harsh, attack and body, reverb on the tails, drive the hits, ring time, level
