@@ -73,6 +73,7 @@ and every tool behaves as without it, so you can compare:
 | Reaction engine, "Follow" | the action's level | a Playhead curve of the action |
 | Spectral morph, granular weave | even or A's level | a Playhead curve of A |
 | Generate | | a check of every generated sound (events, decay and material, time arrow, burstiness) |
+| Library | the synthesized examples | also the **Playhead demo set**: an impact from a rough placement to Playhead's arrangements for punch, size and clarity (the punchy one set as the layer stack), and the examples through Playhead's tools, as a starting point |
 | Effects | the effect chain | also **Playhead tools**: de-harsh, attack and body, three no EQ can copy (reverb on the tails, drive the hits, ring time), level the events (no pumping, attacks untouched), fold to mono (phase lined up, cancellations reported) and widen the tails (attacks centred, mono-compatible), rendered into the library |
 
 The look bar above the source lane picks one of Playhead's looks or takes a look code made in the

@@ -10,7 +10,7 @@
  *   Audio plus its sample rate in Hz.
  *
  * @typedef {Audio & { id: number, name: string, bits: number, isFloat: boolean,
- *   origin: 'file'|'example'|'generated'|'render', ver: number, undo: Channels[] }} Sound
+ *   origin: 'file'|'example'|'demo'|'generated'|'render', ver: number, undo: Channels[] }} Sound
  *   A library item. `bits`/`isFloat` describe the source file and are the default save format.
  *   `ver` increments on every edit and is part of every cache key.
  *

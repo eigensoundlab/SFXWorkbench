@@ -5,6 +5,14 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Playhead demo set** (in the library, with Playhead analysis on): the example sounds finished with Playhead, as a
+  starting point and a show of what it does. An impact layered from the gunshot (body), the metal hit (transient) and
+  a sub drop, from a rough placement to the arrangements Playhead's search finds for punch, size and clarity (scores
+  0.61 to 0.76, 0.73 to 0.82 and 0.70 to 0.82), with the punchy one set as the layer stack to take further; and
+  Playhead's tools on the examples: the metal hit de-harshed and with reverb on its tails, the footsteps levelled, the
+  gunshot's hits driven, the servo's tails widened. The sounds carry a "demo" tag. About 5 s to make.
+
 ## [0.11.0] - 2026-11-07
 
 ### Added

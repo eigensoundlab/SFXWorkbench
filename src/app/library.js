@@ -11,6 +11,7 @@ import { renderMix } from './panels/combine.js';
 import { updateSliceInfo } from './panels/slice.js';
 import { scheduleRender } from './output.js';
 import { refreshAccents, renderRefOptions } from './panels/accents.js';
+import { buildDemoSet, DEMO_LAYERS } from './demoset.js';
 
 export function metaShort(s) { return `${khz(s.sr)} kHz · ${s.isFloat ? '32f' : s.bits} · ${chLabel(s.ch.length)} · ${(D.len(s.ch) / s.sr).toFixed(2)} s`; }
 export function renderLibrary() {
@@ -19,7 +20,7 @@ export function renderLibrary() {
   $('#lib-list').replaceChildren(...S.sounds.map(s => h('li', { class: 'lib-item' + (s.id === S.selId ? ' is-sel' : '') },
     h('button', { class: 'icon-btn play', type: 'button', title: 'Play', 'aria-label': 'Play ' + s.name, onclick: () => play(s, 0, null, s.id === S.selId ? 'src' : 'lib') }, playIcon()),
     h('button', { class: 'lib-main', type: 'button', 'aria-current': s.id === S.selId ? 'true' : null, onclick: () => select(s.id) },
-      h('span', { class: 'lib-name' }, s.name, s.origin === 'example' ? h('span', { class: 'tag', text: 'example' }) : null),
+      h('span', { class: 'lib-name' }, s.name, s.origin === 'example' || s.origin === 'demo' ? h('span', { class: 'tag', text: s.origin }) : null),
       h('span', { class: 'lib-meta', text: metaShort(s) })),
     h('button', { class: 'lib-del', type: 'button', title: 'Remove from library', 'aria-label': 'Remove ' + s.name, onclick: () => removeSound(s.id) }, '×'))));
 }
@@ -52,6 +53,7 @@ export function initLibrary() {
     const label = { subdrop: 'sub_drop', noise: 'noise_burst', sweep: 'sine_sweep', click: 'click' }[k];
     addSound(newSound(label, 48000, D.synth[k](48000), 24, false, 'generated'), { select: true });
   });
+  $('#ph-demo').addEventListener('click', addDemoSet);
   let depth = 0;
   window.addEventListener('dragenter', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { depth++; document.body.classList.add('is-drop'); } });
   window.addEventListener('dragleave', () => { depth = Math.max(0, depth - 1); if (!depth) document.body.classList.remove('is-drop'); });
@@ -60,4 +62,28 @@ export function initLibrary() {
     e.preventDefault(); depth = 0; document.body.classList.remove('is-drop');
     if (e.dataTransfer && e.dataTransfer.files.length) importFiles([...e.dataTransfer.files]);
   });
+}
+
+/** The Playhead demo set (demoset.js) into the library: the finished sounds, and the impact's layers as the layer
+ *  stack in their punchy arrangement. */
+async function addDemoSet() {
+  const btn = $('#ph-demo'), sr = 48000;
+  btn.disabled = true;
+  try {
+    const ex = Object.fromEntries(['gunshot', 'metal', 'footstep', 'servo'].map(k => [k, D.synth[k](sr)]));
+    const r = await buildDemoSet(ex, sr, step => toast(step + '…'));
+    let first = null;
+    for (const s of r.sounds) { const snd = newSound(s.name, sr, s.ch, 24, false, 'demo'); addSound(snd); if (!first) first = snd; }
+    const ids = {};
+    for (const L of DEMO_LAYERS) { const snd = newSound('impact layer: ' + L.role, sr, r.sources[L.name], 24, false, 'demo'); addSound(snd); ids[L.name] = snd.id; }
+    const layer = (src, offset, gain) => ({ src, offset, gain, pitch: 0, pan: 0, reverse: false, stretch: 1, polarity: 1, mute: false, solo: false });
+    S.layers = r.layers.map(L => layer(ids[L.name], L.offset, L.gain));
+    while (S.layers.length < 4) S.layers.push(layer(null, 0, 0));
+    if (first) select(first.id);
+    renderMix();
+    toast('Playhead demo set added: ' + r.sounds.length + ' sounds, and the impact\'s layers in the layer stack, arranged for punch.');
+  } catch (e) {
+    console.error(e);
+    toast('The demo set could not be made: ' + (e && e.message || e), 'err');
+  } finally { btn.disabled = false; }
 }

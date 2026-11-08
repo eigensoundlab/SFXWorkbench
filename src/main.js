@@ -106,6 +106,7 @@ function syncPlayhead() {
   $('#view-ph').hidden = !PH.on;
   if (!PH.on && S.view === 'ph') setView('wave');
   $('#acc-det-row').hidden = !PH.on;
+  $('#ph-demo').hidden = !PH.on;
   renderMix(); refreshAccents(); syncGenPlayhead(); renderPhTools(); drawSrc(); drawOut();
 }
 function initPlayhead() {
