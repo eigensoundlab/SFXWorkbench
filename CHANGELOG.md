@@ -6,6 +6,15 @@ All notable changes to this project are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Kurator link:** Kurator (a local asset manager, 0.19.1 or newer) can send sounds here: Send to SFX Workbench on
+  sounds, or New sounds in SFX Workbench on a folder, tag or project. They load into the library, marked "kurator", and a
+  Kurator box shows where saved sounds go. While it is set to "To Kurator", every save button sends new files to Kurator
+  instead of downloading them: output, source, variations, slices and loops, sets as single files. Kurator saves them into
+  the folder chosen there, never over another file, tagged SFX Workbench plus the project or tags of the view, with the
+  sound they were made from as their source. "As download" switches back; × disconnects. The link travels in the part
+  of the address after #, which is never sent to the web server, and is removed from the address bar. Only a Kurator on
+  this computer is accepted, and Kurator answers only this site. Chrome and Edge ask once whether the site may connect
+  to apps on this device. Safari does not allow it. A reload keeps the link and loads the sounds again.
 - **Playhead demo set** (in the library, with Playhead analysis on): the example sounds finished with Playhead, as a
   starting point and a show of what it does. An impact layered from the gunshot (body), the metal hit (transient) and
   a sub drop, from a rough placement to the arrangements Playhead's search finds for punch, size and clarity (scores

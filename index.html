@@ -31,6 +31,20 @@
     </div>
 
     <div id="rail-lib-view" class="rail-view">
+      <div id="kur-bar" class="kur-bar" role="region" aria-label="Kurator" hidden>
+        <div class="kur-head">
+          <span class="kur-title">Kurator</span>
+          <button class="icon-btn" id="kur-close" type="button" aria-label="Disconnect from Kurator" title="Disconnect: saves go to downloads again">×</button>
+        </div>
+        <p id="kur-msg" class="hint" role="status"></p>
+        <div id="kur-save" class="kur-save" hidden>
+          <span class="seg" role="group" aria-label="Where saved sounds go">
+            <button type="button" id="kur-to-k" aria-pressed="true" title="Save, Save all and the other save buttons send new files to Kurator">To Kurator</button>
+            <button type="button" id="kur-to-d" aria-pressed="false" title="Save buttons download files as usual">As download</button>
+          </span>
+        </div>
+        <button class="btn" id="kur-retry" type="button" hidden>Load from Kurator</button>
+      </div>
       <div class="lib-actions">
         <label class="btn primary file-btn" for="file-in">Import</label>
         <input id="file-in" type="file" accept="audio/*,.wav,.wave,.aif,.aiff,.aifc,.flac" multiple hidden>

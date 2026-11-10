@@ -14,6 +14,11 @@ and open it in any modern browser.
   automatic stop after silence so you can perform take after take.
 - **Folders:** pin your sound library folders, browse and preview with the arrow keys, add with Enter. WAV, AIFF, FLAC,
   MP3, OGG and more.
+- **Kurator link:** in [Kurator](https://github.com/eigensoundlab/kurator) (a local asset manager), right-click sounds
+  and choose Send to SFX Workbench. They load here from any folder, tag or project, and everything you save (output,
+  source, variations, slices, loops) goes back to Kurator as new files, tagged and with the sounds it was made from
+  as its source. Kurator never overwrites anything. Works in Chrome, Edge and Firefox. The first time, the browser asks
+  whether the page may connect to apps on this device. Safari does not allow this.
 - **Editing:** trim, delete, silence, reverse, fades, normalize, gain, trim silence, to mono, with undo.
 - **Effect chain** with 23 effects, including a resonator body (play a sound through virtual metal, wood or glass) and
   dispersion / spring. Also: speed/pitch with sweeps, time stretch (clean, spectral, extreme smear; it can keep every

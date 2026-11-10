@@ -22,6 +22,7 @@ import { rollGenQuiet, initGenerate, drawModes, syncGenPlayhead, showGen } from 
 import { updateSliceInfo, initSlice } from './app/panels/slice.js';
 import { initRecorder, recorderBusy, toggleRecord } from './app/recorder.js';
 import { initFolders } from './app/folders.js';
+import { initKurator } from './app/kurator.js';
 import { initAccents, refreshAccents, drawAcc } from './app/panels/accents.js';
 import { PH, setPlayhead } from './app/playhead.js';
 import { initLookBar } from './app/lookbar.js';
@@ -133,6 +134,7 @@ function boot() {
   renderLibrary(); renderDeck(); renderChain(); renderVarParams(); renderVars(); renderMix(); updateSliceInfo();
   initPlayhead();
   scheduleRender();
+  initKurator();
 }
 
 boot();

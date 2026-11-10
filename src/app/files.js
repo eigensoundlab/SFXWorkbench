@@ -44,12 +44,24 @@ export async function saveBytes(filename, bytes, mime) {
   toast('Saved ' + filename);
   return true;
 }
+/**
+ * Where saves go instead of downloads (the Kurator link, see kurator.js): { send(files) } where files are
+ * [{ name, bytes, meta }]. null: downloads.
+ */
+let saveTarget = null;
+export const setSaveTarget = t => { saveTarget = t; };
 export function saveSound(snd, meta, base) {
-  try { return saveBytes(safeName(base) + '.wav', encodeFor(snd, meta), 'audio/wav'); }
-  catch (e) { console.error(e); toast('Could not encode the WAV: ' + e.message, 'err'); }
+  let bytes;
+  try { bytes = encodeFor(snd, meta); } catch (e) { console.error(e); toast('Could not encode the WAV: ' + e.message, 'err'); return; }
+  if (saveTarget) return saveTarget.send([{ name: safeName(base) + '.wav', bytes, meta }]);
+  return saveBytes(safeName(base) + '.wav', bytes, 'audio/wav');
 }
 export async function saveZip(name, items) {
-  try { await saveBytes(safeName(name) + '.zip', D.zip(items.map(it => ({ name: safeName(it.name) + '.wav', data: encodeFor(it, it.meta || it) }))), 'application/zip'); }
+  try {
+    const files = items.map(it => ({ name: safeName(it.name) + '.wav', bytes: encodeFor(it, it.meta || it), meta: it.meta || it }));
+    if (saveTarget) { await saveTarget.send(files); return; }   // each sound as its own file
+    await saveBytes(safeName(name) + '.zip', D.zip(files.map(f => ({ name: f.name, data: f.bytes }))), 'application/zip');
+  }
   catch (e) { console.error(e); toast('Could not build the zip: ' + e.message, 'err'); }
 }
 /**
@@ -64,18 +76,23 @@ export async function decodeFile(f) {
   return { sr: ab.sampleRate, ch: Array.from({ length: ab.numberOfChannels }, (_, i) => ab.getChannelData(i).slice()), bits: 24, isFloat: false, decoded: true };
 }
 
+/** Add files to the library and select the last one. Returns the new sounds, null where a file failed. */
 export async function importFiles(files) {
   let last = null;
+  const made = [];
   for (const f of files) {
+    made.push(null);
     try {
       const dec = await decodeFile(f);
       if (!D.len(dec.ch)) throw new Error('No audio in this file.');
       last = newSound(f.name.replace(/\.[^.]+$/, ''), dec.sr, dec.ch, dec.bits, dec.isFloat, 'file');
       S.sounds.push(last);
+      made[made.length - 1] = last;
       toast(dec.decoded ? `Loaded ${f.name}. Compressed files are decoded at ${khz(dec.sr)} kHz; saves default to 24-bit.` : `Loaded ${f.name} · ${khz(dec.sr)} kHz · ${bitsLabel(dec)}`);
     } catch (e) {
       console.error(e); toast(`${f.name}: ${e.message || 'could not be read as audio'}`, 'err');
     }
   }
   if (last) select(last.id); else renderLibrary();
+  return made;
 }

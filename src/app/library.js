@@ -20,7 +20,7 @@ export function renderLibrary() {
   $('#lib-list').replaceChildren(...S.sounds.map(s => h('li', { class: 'lib-item' + (s.id === S.selId ? ' is-sel' : '') },
     h('button', { class: 'icon-btn play', type: 'button', title: 'Play', 'aria-label': 'Play ' + s.name, onclick: () => play(s, 0, null, s.id === S.selId ? 'src' : 'lib') }, playIcon()),
     h('button', { class: 'lib-main', type: 'button', 'aria-current': s.id === S.selId ? 'true' : null, onclick: () => select(s.id) },
-      h('span', { class: 'lib-name' }, s.name, s.origin === 'example' || s.origin === 'demo' ? h('span', { class: 'tag', text: s.origin }) : null),
+      h('span', { class: 'lib-name' }, s.name, s.origin === 'example' || s.origin === 'demo' || s.origin === 'kurator' ? h('span', { class: 'tag', text: s.origin }) : null),
       h('span', { class: 'lib-meta', text: metaShort(s) })),
     h('button', { class: 'lib-del', type: 'button', title: 'Remove from library', 'aria-label': 'Remove ' + s.name, onclick: () => removeSound(s.id) }, '×'))));
 }

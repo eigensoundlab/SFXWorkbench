@@ -73,6 +73,13 @@ evaluated, only after `boot()`.
 - `src/app/folders.js` lists folders through a small node interface (`{ name, list() }`) with two implementations: File
   System Access handles (persisted in IndexedDB by `src/app/store.js`) and a tree built from an
   `<input webkitdirectory>` upload. Previews are decoded by `decodeFile()` in `src/app/files.js` and cached (24 files).
+- `src/app/kurator.js` is the link to Kurator, a local asset manager. Kurator opens the page with
+  `#kurator=<http://127.0.0.1:port>&link=<token>`; `parseLink()` in `src/app/kuratorlink.js` (pure, tested) accepts
+  loopback addresses only, and the hash is removed from the address (kept in sessionStorage for reloads). The sounds
+  load from `GET /api/sfx/link/<token>/file/<n>` (fetch with `targetAddressSpace: 'loopback'`: Chrome's Local Network
+  Access prompt) and carry `kur` (their index in the link). While the link is on, `setSaveTarget()` in `files.js`
+  sends every save to `POST .../save?name=&src=` instead of downloading (sets as single files, not a zip); `src` is the
+  `kur` of the sound saved from, else of the selected sound.
 
 ## Generator engines
 

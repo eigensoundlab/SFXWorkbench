@@ -274,6 +274,14 @@ body.is-drop::after {
 .dir-actions .chk { font-size: 12.5px; }
 .btn.is-rec, .rec-btn.is-rec { background: var(--danger); border-color: var(--danger); color: var(--panel); }
 
+/* Kurator link bar: sounds sent from Kurator, and where saves go */
+.kur-bar { border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line)); border-radius: var(--r); background: var(--well); padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+.kur-head { display: flex; justify-content: space-between; align-items: center; }
+.kur-title { font: 600 12px/1.2 var(--f-display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent-text); }
+.kur-bar .hint.is-err { color: var(--danger); }
+.kur-save .seg { flex-wrap: wrap; }
+.kur-bar .btn { align-self: flex-start; }
+
 .rec { border: 1px solid var(--line); border-radius: var(--r); background: var(--well); padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .rec-head { display: flex; justify-content: space-between; align-items: center; }
 .rec-field { display: grid; grid-template-columns: 70px minmax(0, 1fr) auto; align-items: center; gap: 6px; font-size: 12.5px; }
