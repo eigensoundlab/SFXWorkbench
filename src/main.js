@@ -23,6 +23,7 @@ import { updateSliceInfo, initSlice } from './app/panels/slice.js';
 import { initRecorder, recorderBusy, toggleRecord } from './app/recorder.js';
 import { initFolders } from './app/folders.js';
 import { initKurator } from './app/kurator.js';
+import { initInbox } from './app/inbox.js';
 import { initAccents, refreshAccents, drawAcc } from './app/panels/accents.js';
 import { PH, setPlayhead } from './app/playhead.js';
 import { initLookBar } from './app/lookbar.js';
@@ -135,6 +136,7 @@ function boot() {
   initPlayhead();
   scheduleRender();
   initKurator();
+  initInbox();
 }
 
 boot();

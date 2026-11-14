@@ -6,6 +6,10 @@ All notable changes to this project are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Sounds from other pages of this site:** the Ballistic Foley Lab (https://eigensoundlab.github.io/ballistic/) can send
+  a sound here with Send to SFX Workbench. It opens SFX Workbench in another tab, or uses the one it opened before, and
+  the sound arrives in the library as a 32-bit float WAV, with a short note saying where it came from. Only pages on
+  the same site can send; everything stays in the browser.
 - **Kurator link:** Kurator (a local asset manager, 0.19.1 or newer) can send sounds here: Send to SFX Workbench on
   sounds, or New sounds in SFX Workbench on a folder, tag or project. They load into the library, marked "kurator", and a
   Kurator box shows where saved sounds go. While it is set to "To Kurator", every save button sends new files to Kurator
