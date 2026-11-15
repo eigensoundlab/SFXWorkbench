@@ -2,7 +2,7 @@
 /** Library list: render, add, select and remove sounds. */
 import * as D from '../dsp/index.js';
 import { $, h, playIcon, toast } from './dom.js';
-import { S, newSound } from './state.js';
+import { S, newSound, byId } from './state.js';
 import { importFiles } from './files.js';
 import { khz, chLabel } from './format.js';
 import { play, stop } from './audio.js';
@@ -12,17 +12,41 @@ import { updateSliceInfo } from './panels/slice.js';
 import { scheduleRender } from './output.js';
 import { refreshAccents, renderRefOptions } from './panels/accents.js';
 import { buildDemoSet, DEMO_LAYERS } from './demoset.js';
+import { libraryRows, stemShortName } from './libgroups.js';
+import { stemLayers } from './sendlink.js';
 
 export function metaShort(s) { return `${khz(s.sr)} kHz · ${s.isFloat ? '32f' : s.bits} · ${chLabel(s.ch.length)} · ${(D.len(s.ch) / s.sr).toFixed(2)} s`; }
+const stemsOf = s => (s.stems || []).filter(id => byId(id));
+function libItem(s) {
+  const stems = stemsOf(s), mix = s.stemOf != null ? byId(s.stemOf) : null;
+  return h('li', { class: 'lib-item' + (s.id === S.selId ? ' is-sel' : '') + (stems.length ? ' has-stems' : '') + (mix ? ' is-stem' : '') },
+    h('button', { class: 'icon-btn play', type: 'button', title: 'Play', 'aria-label': 'Play ' + s.name, onclick: () => play(s, 0, null, s.id === S.selId ? 'src' : 'lib') }, playIcon()),
+    h('button', { class: 'lib-main', type: 'button', title: s.name, 'aria-current': s.id === S.selId ? 'true' : null, onclick: () => select(s.id) },
+      h('span', { class: 'lib-name' }, mix ? stemShortName(s.name, mix.name) : s.name, s.origin === 'example' || s.origin === 'demo' || s.origin === 'kurator' ? h('span', { class: 'tag', text: s.origin }) : null),
+      h('span', { class: 'lib-meta', text: metaShort(s) })),
+    stems.length ? h('button', { class: 'lib-stems', type: 'button', title: `Load its ${stems.length} stems into the layer stack`, 'aria-label': `Load the stems of ${s.name} into the layer stack`, onclick: () => loadStems(s) }, 'Layers') : null,
+    h('button', { class: 'lib-del', type: 'button', title: 'Remove from library', 'aria-label': 'Remove ' + s.name, onclick: () => removeSound(s.id) }, '×'));
+}
 export function renderLibrary() {
   renderRefOptions();
   $('#lib-count').textContent = S.sounds.length + (S.sounds.length === 1 ? ' sound' : ' sounds');
-  $('#lib-list').replaceChildren(...S.sounds.map(s => h('li', { class: 'lib-item' + (s.id === S.selId ? ' is-sel' : '') },
-    h('button', { class: 'icon-btn play', type: 'button', title: 'Play', 'aria-label': 'Play ' + s.name, onclick: () => play(s, 0, null, s.id === S.selId ? 'src' : 'lib') }, playIcon()),
-    h('button', { class: 'lib-main', type: 'button', 'aria-current': s.id === S.selId ? 'true' : null, onclick: () => select(s.id) },
-      h('span', { class: 'lib-name' }, s.name, s.origin === 'example' || s.origin === 'demo' || s.origin === 'kurator' ? h('span', { class: 'tag', text: s.origin }) : null),
-      h('span', { class: 'lib-meta', text: metaShort(s) })),
-    h('button', { class: 'lib-del', type: 'button', title: 'Remove from library', 'aria-label': 'Remove ' + s.name, onclick: () => removeSound(s.id) }, '×'))));
+  $('#lib-list').replaceChildren(...libraryRows(S.sounds, S.libOpen).map(r => {
+    if (r.sound) return libItem(r.sound);
+    const n = r.members.length;
+    return h('li', { class: 'lib-group' },
+      h('button', { class: 'lib-group-head', type: 'button', 'aria-expanded': String(r.open), onclick: () => { S.libOpen[r.group] = !r.open; renderLibrary(); } },
+        h('span', { class: 'lib-caret', 'aria-hidden': 'true' }), h('span', { class: 'lib-group-name', text: r.group }), h('span', { class: 'lib-meta', text: `${n} ${n === 1 ? 'sound' : 'sounds'}` })),
+      r.open ? h('ul', { class: 'lib-sub' }, ...r.members.map(libItem)) : null);
+  }));
+}
+/** The stems that came with a sound into the layer stack, each in place at its own level. */
+export function loadStems(s) {
+  const ids = stemsOf(s);
+  if (!ids.length) return;
+  S.layers = stemLayers(ids);
+  S.mode = 'layer';
+  renderMix();
+  toast(`The ${ids.length} stems of ${s.name} are in the layer stack (Combine & morph).`);
 }
 export function addSound(s, opts = {}) {
   S.sounds.push(s);
@@ -31,6 +55,8 @@ export function addSound(s, opts = {}) {
 }
 export function select(id) {
   stop(false);
+  const s = byId(id);
+  if (s && s.group) S.libOpen[s.group] = true;
   S.selId = id; S.sel = null; S.cursor = 0;
   renderLibrary(); renderDeck(); renderMix(); updateSliceInfo(); scheduleRender(); refreshAccents();
 }
@@ -41,6 +67,8 @@ export function removeSound(id) {
   if (S.A === id) S.A = null;
   if (S.B === id) S.B = null;
   S.layers.forEach(l => { if (l.src === id) l.src = null; });
+  if (gone.stemOf != null) { const mix = byId(gone.stemOf); if (mix && mix.stems) mix.stems = mix.stems.filter(x => x !== id); }
+  if (gone.stems) gone.stems.forEach(x => { const st = byId(x); if (st) st.stemOf = null; });
   renderLibrary(); renderMix();
   toast(`Removed ${gone.name}`);
 }
