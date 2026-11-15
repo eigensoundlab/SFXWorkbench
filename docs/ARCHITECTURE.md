@@ -81,11 +81,15 @@ evaluated, only after `boot()`.
   sends every save to `POST .../save?name=&src=` instead of downloading (sets as single files, not a zip); `src` is the
   `kur` of the sound saved from, else of the selected sound.
 - `src/app/inbox.js` takes sounds from other pages of the same origin (the Ballistic Foley Lab). The sender opens a
-  window named `sfxworkbench` and posts `{ type: 'sfxworkbench:import', v: 1, id, from, files: [{ name, bytes }] }`;
+  window named `sfxworkbench` and posts `{ type: 'sfxworkbench:import', v: 1, id, from, group, files: [{ name, bytes, role }] }`;
   `parseImport()` in `src/app/sendlink.js` (pure, tested) checks it and cleans the file names, and the files go through
-  `importFiles()` like dropped files. The page posts `sfxworkbench:ready` to its opener at boot (a sender whose first
-  message came before the page loaded sends again) and `sfxworkbench:imported` with the id once the files are in.
-  Messages from any other origin are ignored, and an id already imported is answered without a second copy.
+  `importFiles()` like dropped files. Each sound gets `group` (shown as a collapsible row by `renderLibrary()`, laid
+  out by the pure `libraryRows()` in `src/app/libgroups.js`; `S.libOpen` keeps which groups are closed). Files with
+  role `stem` are linked to the mix they came with (`mix.stems`, `stem.stemOf`): the mix gets a Layers button
+  (`loadStems()`), and the stems replace the layer stack at once only when `stackIsFree()` finds nothing the user built
+  there. The page posts `sfxworkbench:ready` to its opener at boot (a sender whose first message came before the page
+  loaded sends again) and `sfxworkbench:imported` with the id once the files are in. Messages from any other origin
+  are ignored, and an id already imported is answered without a second copy.
 
 ## Generator engines
 

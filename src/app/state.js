@@ -10,7 +10,7 @@ import { ENGINES, engineSpecs } from '../config/generator.js';
 
 let uid = 1, fxid = 1;
 export const S = {
-  sounds: [], selId: null, sel: null, cursor: 0, chain: [], chainOn: true, chainHist: [], out: null, view: 'wave', tab: 'fx', // view: 'wave' | 'spec' | 'ph'
+  sounds: [], libOpen: {}, selId: null, sel: null, cursor: 0, chain: [], chainOn: true, chainHist: [], out: null, view: 'wave', tab: 'fx', // view: 'wave' | 'spec' | 'ph'
   vp: defaults(VAR_SPEC), vname: '{name}_var{nn}', vars: [],
   mode: 'cross', A: null, B: null, mp: Object.fromEntries(Object.entries(MIX).filter(([, m]) => m.params).map(([k, m]) => [k, defaults(m.params)])),
   layers: [], layerNorm: true, layerView: 'timeline', layerLow: 0, layerFolder: 'mix', layerGoal: 'punch', layerCands: null,
