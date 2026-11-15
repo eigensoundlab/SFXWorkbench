@@ -2,7 +2,7 @@
 /** Import (WAV parser, or the browser's decoder for compressed formats) and saving (direct download, or the Claude artifact downloads capability when embedded there). */
 import * as D from '../dsp/index.js';
 import { h, toast } from './dom.js';
-import { S, newSound } from './state.js';
+import { S, cur, newSound } from './state.js';
 import { khz, bitsLabel, safeName } from './format.js';
 import { ctx } from './audio.js';
 import { select, renderLibrary } from './library.js';
@@ -20,7 +20,14 @@ export function encodeFor(snd, meta) {
   if (S.exp.fmt === '16') { bits = 16; isFloat = false; } else if (S.exp.fmt === '24') { bits = 24; isFloat = false; } else if (S.exp.fmt === '32f') { bits = 32; isFloat = true; }
   if (tsr !== sr) { ch = D.resample(ch, sr, tsr); sr = tsr; }
   if (S.fin.ceil) { const pk = D.peak(ch), lim = D.dbToLin(-0.3); if (pk > lim) ch = D.scale(ch, lim / pk); }
-  return D.encodeWav(ch, sr, bits, isFloat);
+  return D.encodeWav(ch, sr, bits, isFloat, D.carryMeta(chunksFor(snd, meta), { sr, channels: ch.length, bits, isFloat }));
+}
+/** The metadata a save carries: the sound's own, else its source's; variations, takes and loops (not library sounds) come from the selected sound. */
+function chunksFor(snd, meta) {
+  if (snd.chunks) return snd.chunks;
+  if (meta && meta.chunks) return meta.chunks;
+  const s = !snd.origin ? cur() : null;
+  return s && s.chunks ? s.chunks : null;
 }
 export async function saveBytes(filename, bytes, mime) {
   if (inViewer()) {
@@ -76,6 +83,15 @@ export async function decodeFile(f) {
   return { sr: ab.sampleRate, ch: Array.from({ length: ab.numberOfChannels }, (_, i) => ab.getChannelData(i).slice()), bits: 24, isFloat: false, decoded: true };
 }
 
+/** "keeps its date, project and 3 keywords": what the file's metadata says, for the toast and the library. */
+export function keptText(chunks) {
+  if (!chunks || !chunks.length) return '';
+  const m = D.metaSummary(chunks), parts = [];
+  if (m.date) parts.push('date');
+  if (m.project) parts.push('project');
+  if (m.keywords.length) parts.push(m.keywords.length + (m.keywords.length === 1 ? ' keyword' : ' keywords'));
+  return parts.length ? 'keeps its ' + parts.join(', ').replace(/, ([^,]*)$/, ' and $1') : 'keeps its metadata';
+}
 /** Add files to the library and select the last one. Returns the new sounds, null where a file failed. */
 export async function importFiles(files) {
   let last = null;
@@ -86,9 +102,11 @@ export async function importFiles(files) {
       const dec = await decodeFile(f);
       if (!D.len(dec.ch)) throw new Error('No audio in this file.');
       last = newSound(f.name.replace(/\.[^.]+$/, ''), dec.sr, dec.ch, dec.bits, dec.isFloat, 'file');
+      if (dec.chunks && dec.chunks.length) last.chunks = dec.chunks;
       S.sounds.push(last);
       made[made.length - 1] = last;
-      toast(dec.decoded ? `Loaded ${f.name}. Compressed files are decoded at ${khz(dec.sr)} kHz; saves default to 24-bit.` : `Loaded ${f.name} · ${khz(dec.sr)} kHz · ${bitsLabel(dec)}`);
+      const kept = keptText(dec.chunks);
+      toast(dec.decoded ? `Loaded ${f.name}. Compressed files are decoded at ${khz(dec.sr)} kHz; saves default to 24-bit.` : `Loaded ${f.name} · ${khz(dec.sr)} kHz · ${bitsLabel(dec)}${kept ? ' · ' + kept : ''}`);
     } catch (e) {
       console.error(e); toast(`${f.name}: ${e.message || 'could not be read as audio'}`, 'err');
     }

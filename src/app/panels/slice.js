@@ -2,7 +2,7 @@
 /** Slice & loop tab: split takes at silences, and build seamless loops plus start/loop/stop sets. Both use the source without the effect chain. */
 import * as D from '../../dsp/index.js';
 import { $, h, playIcon, toast } from '../dom.js';
-import { S, cur, newSound } from '../state.js';
+import { S, cur, newSound, inherit } from '../state.js';
 import { fmtDur, safeName } from '../format.js';
 import { SLICE_SPEC, LOOP_SPEC } from '../../config/tools.js';
 import { paramRow } from '../controls.js';
@@ -60,12 +60,12 @@ export function initSlice() {
   };
   $('#sl-lib').onclick = () => {
     const items = sliceItems(); if (!items || !items.length) return toast('Find takes first.');
-    items.forEach(it => S.sounds.push(newSound(it.name, it.sr, it.ch, it.bits, it.isFloat, 'render'))); renderLibrary(); renderMix();
+    items.forEach(it => S.sounds.push(inherit(newSound(it.name, it.sr, it.ch, it.bits, it.isFloat, 'render'), cur()))); renderLibrary(); renderMix();
     toast(`Added ${items.length} takes to the library`);
   };
   $('#sl-save').onclick = () => { const items = sliceItems(); if (!items || !items.length) return toast('Find takes first.'); saveZip(cur().name + '_takes', items); };
   $('#lp-play').onclick = () => { const L = buildLoop(); if (L) { play(L.loop, 0, null, 'loop', true); toast('Looping. Press Stop or Esc to end.'); } };
-  $('#lp-lib').onclick = () => { const L = buildLoop(); if (L) { addSound(newSound(L.loop.name, L.loop.sr, L.loop.ch, L.loop.bits, L.loop.isFloat, 'render')); toast(`Added ${L.loop.name} to the library`); } };
+  $('#lp-lib').onclick = () => { const L = buildLoop(); if (L) { addSound(inherit(newSound(L.loop.name, L.loop.sr, L.loop.ch, L.loop.bits, L.loop.isFloat, 'render'), cur())); toast(`Added ${L.loop.name} to the library`); } };
   $('#lp-save').onclick = () => { const L = buildLoop(); if (L) saveSound(L.loop, L.loop, L.loop.name); };
   $('#lp-set').onclick = () => {
     const L = buildLoop(); if (!L) return;

@@ -7,7 +7,7 @@
  */
 import * as D from '../../dsp/index.js';
 import { $, h, toast } from '../dom.js';
-import { S, cur, byId, newSound } from '../state.js';
+import { S, cur, byId, newSound, inherit } from '../state.js';
 import { defaults, fmtDur, safeName } from '../format.js';
 import { ACCENT_SPECS, ACCENT_RECIPES, SLOTS } from '../../config/accents.js';
 import { MATERIALS } from '../../dsp/physical.js';
@@ -195,7 +195,7 @@ export function initAccents() {
   $('#acc-add').onclick = () => {
     const r = renderAccentResult(); if (!r) { if (S.accWait) busy(); return; }
     if (!hasAccents()) return toast('Turn on an accent or load a recipe first.');
-    const s = r.src, snd = addSound(newSound(safeName(s.name) + '_acc', r.sr, D.copy(r.ch), s.bits, s.isFloat, 'render'), { select: true });
+    const s = r.src, snd = addSound(inherit(newSound(safeName(s.name) + '_acc', r.sr, D.copy(r.ch), s.bits, s.isFloat, 'render'), s), { select: true });
     toast(`Added ${snd.name} to the library and selected it.`);
   };
   renderSlots();

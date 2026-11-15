@@ -15,13 +15,22 @@ import { buildDemoSet, DEMO_LAYERS } from './demoset.js';
 import { libraryRows, stemShortName } from './libgroups.js';
 import { stemLayers } from './sendlink.js';
 
+/** The name, and what the file's metadata says (date, origin, project, keywords) when it has any. */
+function libTitle(s) {
+  if (!s.chunks) return s.name;
+  const m = D.metaSummary(s.chunks), lines = [s.name];
+  if (m.date) lines.push(`${m.originator ? m.originator + ', ' : ''}${m.date}${m.time ? ' ' + m.time : ''}`);
+  if (m.project) lines.push('Project: ' + m.project);
+  if (m.keywords.length) lines.push('Keywords: ' + m.keywords.join(', '));
+  return lines.join('\n');
+}
 export function metaShort(s) { return `${khz(s.sr)} kHz · ${s.isFloat ? '32f' : s.bits} · ${chLabel(s.ch.length)} · ${(D.len(s.ch) / s.sr).toFixed(2)} s`; }
 const stemsOf = s => (s.stems || []).filter(id => byId(id));
 function libItem(s) {
   const stems = stemsOf(s), mix = s.stemOf != null ? byId(s.stemOf) : null;
   return h('li', { class: 'lib-item' + (s.id === S.selId ? ' is-sel' : '') + (stems.length ? ' has-stems' : '') + (mix ? ' is-stem' : '') },
     h('button', { class: 'icon-btn play', type: 'button', title: 'Play', 'aria-label': 'Play ' + s.name, onclick: () => play(s, 0, null, s.id === S.selId ? 'src' : 'lib') }, playIcon()),
-    h('button', { class: 'lib-main', type: 'button', title: s.name, 'aria-current': s.id === S.selId ? 'true' : null, onclick: () => select(s.id) },
+    h('button', { class: 'lib-main', type: 'button', title: libTitle(s), 'aria-current': s.id === S.selId ? 'true' : null, onclick: () => select(s.id) },
       h('span', { class: 'lib-name' }, mix ? stemShortName(s.name, mix.name) : s.name, s.origin === 'example' || s.origin === 'demo' || s.origin === 'kurator' ? h('span', { class: 'tag', text: s.origin }) : null),
       h('span', { class: 'lib-meta', text: metaShort(s) })),
     stems.length ? h('button', { class: 'lib-stems', type: 'button', title: `Load its ${stems.length} stems into the layer stack`, 'aria-label': `Load the stems of ${s.name} into the layer stack`, onclick: () => loadStems(s) }, 'Layers') : null,
