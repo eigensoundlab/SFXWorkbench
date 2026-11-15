@@ -7,7 +7,7 @@
  * what the user chose them for; the others keep it. The bit depth of the new sound is the source's.
  */
 import { $, h, toast } from '../dom.js';
-import { S, cur, newSound } from '../state.js';
+import { S, cur, newSound, inherit } from '../state.js';
 import { defaults, safeName } from '../format.js';
 import { paramRow, syncWhen } from '../controls.js';
 import { PH, phToolSpecs, phProcess } from '../playhead.js';
@@ -53,7 +53,7 @@ async function run() {
     }
     let first = null;
     for (const o of r.outputs) {
-      const snd = addSound(newSound(`${safeName(s.name)}_${o.suffix}`, o.sampleRate, o.channels, s.bits, s.isFloat, 'render'), { select: !first });
+      const snd = addSound(inherit(newSound(`${safeName(s.name)}_${o.suffix}`, o.sampleRate, o.channels, s.bits, s.isFloat, 'render'), s), { select: !first });
       first = first || snd;
     }
     status.textContent = `Added ${r.outputs.map(o => safeName(s.name) + '_' + o.suffix).join(' and ')} and selected it. The original is still in the library.`;

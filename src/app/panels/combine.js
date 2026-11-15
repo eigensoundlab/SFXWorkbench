@@ -5,7 +5,7 @@
  */
 import * as D from '../../dsp/index.js';
 import { $, h, toast } from '../dom.js';
-import { S, byId, newSound } from '../state.js';
+import { S, byId, newSound, inherit } from '../state.js';
 import { fmtDur } from '../format.js';
 import { MIX, LAYER_SPEC } from '../../config/tools.js';
 import { paramRow } from '../controls.js';
@@ -101,7 +101,7 @@ export async function renderMixResult() {
       name = `${A.name}_${MIX[S.mode].short}${tag}_${B.name}`.slice(0, 60);
     }
     if (!D.len(res.ch)) throw new Error('The result is empty.');
-    const snd = addSound(newSound(name, res.sr, res.ch, meta.bits, meta.isFloat, 'render'), { select: true });
+    const snd = addSound(inherit(newSound(name, res.sr, res.ch, meta.bits, meta.isFloat, 'render'), meta), { select: true });
     status.textContent = `Added ${snd.name} (${fmtDur(D.len(res.ch) / res.sr)} s) and selected it.`;
     play(snd, 0, null, 'src');
   } catch (e) {

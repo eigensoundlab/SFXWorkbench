@@ -2,7 +2,7 @@
 /** The deck: source info, destructive edits with undo, transport, finishing and save controls. */
 import * as D from '../dsp/index.js';
 import { $, h, toast } from './dom.js';
-import { S, cur, newSound } from './state.js';
+import { S, cur, newSound, inherit } from './state.js';
 import { khz, fmtDb, fmtDur, fmtLufs, bitsLabel, chLabel } from './format.js';
 import { play, stop } from './audio.js';
 import { drawSrc, drawOut } from './draw.js';
@@ -151,7 +151,7 @@ export function initDeck() {
   $('#btn-bake').onclick = () => {
     const s = cur(), o = ensureOut();
     if (!s || !o || o.err || !D.len(o.ch)) return toast('Nothing to add yet.');
-    addSound(newSound(s.name + '_fx', o.sr, D.copy(o.ch), s.bits, s.isFloat, 'render'));
+    addSound(inherit(newSound(s.name + '_fx', o.sr, D.copy(o.ch), s.bits, s.isFloat, 'render'), s));
     toast(`Added ${s.name}_fx to the library`);
   };
 }

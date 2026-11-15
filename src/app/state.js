@@ -22,6 +22,8 @@ export const S = {
 export const cur = () => S.sounds.find(s => s.id === S.selId) || null;
 export const byId = id => S.sounds.find(s => s.id === id) || null;
 export function newSound(name, sr, ch, bits = 24, isFloat = false, origin = 'file') { return { id: uid++, name, sr, ch, bits, isFloat, origin, ver: 1, undo: [] }; }
+/** A sound made from another keeps its metadata chunks (bext, iXML, XMP): see src/io/wavmeta.js. */
+export function inherit(snd, from) { if (from && from.chunks && from.chunks.length) snd.chunks = from.chunks; return snd; }
 export function makeFx(type, p) { return { id: fxid++, type, on: true, p: Object.assign(defaults(FXDEF[type].params), p || {}) }; }
 /** Fresh id for an effect instance (used when restoring a chain from history). */
 export const nextFxId = () => fxid++;

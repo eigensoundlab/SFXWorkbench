@@ -6,6 +6,12 @@ All notable changes to this project are listed here. The format follows
 ## [Unreleased]
 
 ### Added
+- **Metadata stays with a sound:** WAV files keep their Broadcast WAV (bext), iXML, XMP and INFO chunks: the recording
+  date and time, description, project, take, notes and keywords that field recorders, Ballistic Foley Lab and Kurator
+  write. Everything made from a sound and saved (output, source, variations, takes, loops, layers, accents) carries its
+  source's metadata, with a line for this save added to the bext coding history, the iXML sample rate set to the file's,
+  and SFX Workbench as the XMP creator tool. Kurator, Soundminer or REAPER then sort a result with the recording it came
+  from. Hover a sound in the library to see its date, project and keywords; loading says what it keeps.
 - **Sounds from other pages of this site:** the Ballistic Foley Lab (https://eigensoundlab.github.io/ballistic/) can send
   a sound here with Send to SFX Workbench. It opens SFX Workbench in another tab, or uses the one it opened before, and
   the sound arrives as a 32-bit float WAV in a collapsible "Ballistic Foley Lab" group in the library. Sent with stems,

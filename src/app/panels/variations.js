@@ -2,7 +2,7 @@
 /** Variations tab: seeded random pitch, length, volume, tone, offset and reverse per file, with a naming pattern. */
 import * as D from '../../dsp/index.js';
 import { $, h, playIcon, toast } from '../dom.js';
-import { S, cur, newSound } from '../state.js';
+import { S, cur, newSound, inherit } from '../state.js';
 import { fmtVal, fmtDur, safeName, sgn } from '../format.js';
 import { VAR_SPEC } from '../../config/tools.js';
 import { paramRow } from '../controls.js';
@@ -57,7 +57,7 @@ export function renderVars() {
     h('button', { class: 'icon-btn play', type: 'button', title: 'Play', 'aria-label': 'Play ' + v.name, onclick: () => play(v, 0, null, 'var') }, playIcon()),
     h('div', { class: 'var-txt' }, h('span', { class: 'var-name', text: v.name + '.wav' }), h('span', { class: 'var-info', text: `${fmtDur(D.len(v.ch) / v.sr)} s · ${v.info}` })),
     h('button', { class: 'btn small', type: 'button', onclick: () => saveSound(v, v, v.name) }, 'Save'),
-    h('button', { class: 'btn small', type: 'button', onclick: () => { addSound(newSound(v.name, v.sr, D.copy(v.ch), v.bits, v.isFloat, 'render')); toast(`Added ${v.name} to the library`); } }, '+ Library'))));
+    h('button', { class: 'btn small', type: 'button', onclick: () => { addSound(inherit(newSound(v.name, v.sr, D.copy(v.ch), v.bits, v.isFloat, 'render'), cur())); toast(`Added ${v.name} to the library`); } }, '+ Library'))));
 }
 export function playSequence(items) {
   const sr = items[0].sr, gap = Math.round(0.25 * sr), nc = Math.max(...items.map(v => v.ch.length));
@@ -76,7 +76,7 @@ export function initVariations() {
   $('#btn-save-all').onclick = () => S.vars.length ? saveZip((cur() ? cur().name : 'sfx') + '_variations', S.vars) : toast('Generate variations first.');
   $('#btn-vars-lib').onclick = () => {
     if (!S.vars.length) return toast('Generate variations first.');
-    S.vars.forEach(v => S.sounds.push(newSound(v.name, v.sr, D.copy(v.ch), v.bits, v.isFloat, 'render')));
+    S.vars.forEach(v => S.sounds.push(inherit(newSound(v.name, v.sr, D.copy(v.ch), v.bits, v.isFloat, 'render'), cur())));
     renderLibrary(); renderMix(); toast(`Added ${S.vars.length} sounds to the library`);
   };
 }

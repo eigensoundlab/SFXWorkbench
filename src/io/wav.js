@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-/** WAV decode/encode. Decoding keeps sample rate, channels and bit depth; encoding writes PCM 8/16/24/32-bit or 32-bit float, with TPDF dither only when reducing to 16 bits or less. */
+/**
+ * WAV decode/encode. Decoding keeps sample rate, channels and bit depth; encoding writes PCM 8/16/24/32-bit or 32-bit
+ * float, with TPDF dither only when reducing to 16 bits or less. The metadata chunks sound libraries and asset managers
+ * read (bext, iXML, XMP in _PMX, LIST/INFO) are kept on decode and written back on encode; see wavmeta.js.
+ */
 import { rng, len } from '../dsp/core.js';
 
 /* ---------- WAV I/O ---------- */
@@ -8,6 +12,7 @@ export function decodeWav(buf) {
   const tag = o => String.fromCharCode(dv.getUint8(o), dv.getUint8(o + 1), dv.getUint8(o + 2), dv.getUint8(o + 3));
   if (dv.byteLength < 12 || tag(0) !== 'RIFF' || tag(8) !== 'WAVE') return null;
   let p = 12, fmt = null, data = null;
+  const chunks = [];
   while (p + 8 <= dv.byteLength) {
     const id = tag(p); let size = dv.getUint32(p + 4, true); const body = p + 8;
     if (id === 'fmt ') {
@@ -18,6 +23,8 @@ export function decodeWav(buf) {
     } else if (id === 'data') {
       if (size === 0 || size === 0xFFFFFFFF || body + size > dv.byteLength) size = dv.byteLength - body;
       data = { off: body, size };
+    } else if (META_CHUNKS.includes(id) && size <= MAX_META && body + size <= dv.byteLength && (id !== 'LIST' || tag(body) === 'INFO')) {
+      chunks.push({ id, data: new Uint8Array(buf.slice(body, body + size)) });
     }
     p = body + size + (size & 1);
   }
@@ -38,15 +45,20 @@ export function decodeWav(buf) {
     else v = dv.getInt32(o, true) / 2147483648;
     ch[c][i] = v; o += bps;
   }
-  return { sr, ch, bits: format === 3 ? 32 : bits, isFloat: format === 3 };
+  return { sr, ch, bits: format === 3 ? 32 : bits, isFloat: format === 3, chunks };
 }
+/** Chunks kept from a WAV and written back: Broadcast WAV, iXML, XMP and RIFF INFO, each up to 1 MB. */
+export const META_CHUNKS = ['bext', 'iXML', '_PMX', 'LIST'];
+const MAX_META = 1 << 20;
 export function onGrid(ch, q) {
   for (const c of ch) for (let i = 0; i < c.length; i++) { const v = c[i] * q; if (v !== Math.round(v)) return false; }
   return true;
 }
-export function encodeWav(ch, sr, bits, isFloat) {
+/** chunks: [{ id, data: Uint8Array }] written between fmt and data (metadata kept from the source, see wavmeta.js). */
+export function encodeWav(ch, sr, bits, isFloat, chunks = []) {
   const nc = ch.length, n = len(ch), bps = isFloat ? 4 : bits / 8, block = nc * bps, dataSize = n * block;
-  const header = 12 + 24 + (isFloat ? 12 : 0) + 8;
+  const extra = chunks.reduce((s, c) => s + 8 + c.data.length + (c.data.length & 1), 0);
+  const header = 12 + 24 + (isFloat ? 12 : 0) + extra + 8;
   const buf = new ArrayBuffer(header + dataSize + (dataSize & 1)), dv = new DataView(buf);
   const ws = (o, s) => { for (let i = 0; i < 4; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
   ws(0, 'RIFF'); dv.setUint32(4, buf.byteLength - 8, true); ws(8, 'WAVE');
@@ -54,6 +66,8 @@ export function encodeWav(ch, sr, bits, isFloat) {
   dv.setUint32(24, sr, true); dv.setUint32(28, sr * block, true); dv.setUint16(32, block, true); dv.setUint16(34, bps * 8, true);
   let p = 36;
   if (isFloat) { ws(p, 'fact'); dv.setUint32(p + 4, 4, true); dv.setUint32(p + 8, n, true); p += 12; }
+  const bytes = new Uint8Array(buf);
+  for (const c of chunks) { ws(p, c.id); dv.setUint32(p + 4, c.data.length, true); bytes.set(c.data, p + 8); p += 8 + c.data.length + (c.data.length & 1); }
   ws(p, 'data'); dv.setUint32(p + 4, dataSize, true); p += 8;
   const q = Math.pow(2, bps * 8 - 1), R = rng(90210);
   const dither = !isFloat && bps <= 2 && !onGrid(ch, q);
